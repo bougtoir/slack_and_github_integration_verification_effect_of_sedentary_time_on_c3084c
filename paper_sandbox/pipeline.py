@@ -33,7 +33,13 @@ class PaperPipeline:
         self.slack.stage_done(f"data-acquisition ({len(acquired)} acquired / {len(attempts)} attempted)")
 
         attempted = [
-            {"name": a.get("name"), "url": a["download_url"], "status": a["status"], "error": a.get("error")}
+            {
+                "name": a.get("name"), "publisher": a.get("publisher"), "url": a["download_url"],
+                "final_url": a.get("final_url"), "attempted_at_utc": a.get("attempted_at"),
+                "status": a["status"], "error": a.get("error"), "sha256": a.get("sha256"),
+                "bytes": a.get("bytes"), "content_type": a.get("content_type"),
+                "tables": [{"label": t["label"], "rows": t["rows"], "cols": t["cols"]} for t in a.get("tables", [])],
+            }
             for a in attempts
         ]
         if not acquired:

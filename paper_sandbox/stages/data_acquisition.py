@@ -229,7 +229,10 @@ def acquire_datasets(candidates, data_dir, max_success=3):
             for lbl, df in frames:
                 df = df.dropna(how="all").dropna(axis=1, how="all")
                 out = parsed_dir / f"{idx:02d}_{_slug(c.get('name'))}_{_slug(lbl)}.csv"
-                df.to_csv(out, index=False, header=False if df.columns.dtype == "int64" else True)
+                if df.columns.dtype != "int64":
+                    df = pd.concat([pd.DataFrame([list(df.columns)], columns=range(df.shape[1])),
+                                    df.set_axis(range(df.shape[1]), axis=1)], ignore_index=True)
+                df.to_csv(out, index=False, header=False)
                 tables.append({
                     "label": lbl,
                     "csv": str(out),

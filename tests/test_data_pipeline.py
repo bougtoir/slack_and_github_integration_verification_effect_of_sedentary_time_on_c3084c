@@ -231,6 +231,58 @@ def test_llm_unavailable_stops_without_results():
         assert log["attempts"][0]["error"] == "LLM unavailable"
 
 
+def test_expand_sections_rejects_short_or_placeholder_output():
+    from paper_sandbox.stages import draft as draft_stage
+
+    class C:
+        def __init__(self, reply):
+            self.reply = reply
+
+        def chat(self, prompt, **kw):
+            return self.reply
+
+    parsed = {"title": "T", "sections": {"methods": "Original methods text with detail."}, "figures": [], "tables": []}
+    long_text = " ".join(["word"] * 1000)
+    out = draft_stage.expand_sections(C(json.dumps({"text": long_text})), dict(parsed, sections=dict(parsed["sections"])), "idea", "{}", "[1] r")
+    assert out["sections"]["methods"] == long_text
+    out = draft_stage.expand_sections(C(json.dumps({"text": "short"})), dict(parsed, sections=dict(parsed["sections"])), "idea", "{}", "[1] r")
+    assert out["sections"]["methods"] == "Original methods text with detail."
+    bad = " ".join(["word"] * 1000) + " value to be determined"
+    out = draft_stage.expand_sections(C(json.dumps({"text": bad})), dict(parsed, sections=dict(parsed["sections"])), "idea", "{}", "[1] r")
+    assert out["sections"]["methods"] == "Original methods text with detail."
+    out = draft_stage.expand_sections(C("[AI request failed]"), dict(parsed, sections=dict(parsed["sections"])), "idea", "{}", "[1] r")
+    assert out["sections"]["methods"] == "Original methods text with detail."
+
+
+def test_strip_unsupported_access_dates():
+    from paper_sandbox.stages.draft import strip_unsupported_access_dates
+    p = {"sections": {"methods": "A (accessed on 2023-10-05, no checksum). B (accessed 2026-09-07). Rate 5 per 100."}}
+    out = strip_unsupported_access_dates(p, {"attempted_sources": [{"attempted_at_utc": "2026-09-07T13:00:00+00:00"}]})
+    assert "2023-10-05" not in out["sections"]["methods"]
+    assert "(accessed 2026-09-07)" in out["sections"]["methods"]
+    assert "Rate 5 per 100." in out["sections"]["methods"]
+
+
+def test_plan_word_budget_clamps_and_falls_back():
+    from paper_sandbox.stages import draft as d
+
+    class C:
+        def __init__(self, out):
+            self.out = out
+
+        def chat(self, *a, **k):
+            return self.out
+
+    parsed = {"title": "t", "abstract": "a", "sections": {}}
+    plan, _ = d.plan_word_budget(C(json.dumps({"introduction": 100, "methods": 2500, "results": 100, "discussion": 300, "rationale": "sim"})), parsed, "i", "{}")
+    assert abs(sum(plan.values()) - d.BODY_WORDS) <= 4
+    assert plan["methods"] <= d.BODY_WORDS * 0.45 + 1 and plan["introduction"] >= d.BODY_WORDS * 0.10 - 1
+    plan2, why = d.plan_word_budget(C("[AI request failed]"), parsed, "i", "{}")
+    assert plan2 == d.default_word_plan() and "default" in why
+    plan3, _ = d.plan_word_budget(C("{not json"), parsed, "i", "{}")
+    assert plan3 == d.default_word_plan()
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
