@@ -113,6 +113,38 @@ def renumber_citations_vancouver(parsed):
     return parsed
 
 
+def _ensure_figures_tables_cited(parsed):
+    """Append explicit citations if the model omitted them."""
+    sections = parsed.get("sections", {})
+    text = " ".join([parsed.get("abstract", "")] + list(sections.values())).lower()
+    target_key = None
+    for k in sections:
+        if k.lower() == "results":
+            target_key = k
+            break
+    if target_key is None:
+        for k in sections:
+            if k.lower() == "methods":
+                target_key = k
+                break
+    if target_key is None:
+        return
+
+    additions = []
+    for fig in parsed.get("figures", []):
+        i = fig.get("id", 1)
+        caption = fig.get("caption", "")
+        if f"fig. {i}" not in text and f"figure {i}" not in text:
+            additions.append(f"{caption} is shown in Fig. {i}.")
+    for table in parsed.get("tables", []):
+        i = table.get("id", 1)
+        caption = table.get("caption", "")
+        if f"table {i}" not in text:
+            additions.append(f"{caption} is summarized in Table {i}.")
+    if additions:
+        sections[target_key] = sections[target_key].rstrip() + "\n\n" + " ".join(additions)
+
+
 def _check_for_placeholders(parsed):
     """Raise if the parsed manuscript still contains placeholder markers."""
     for section, text in parsed.get("sections", {}).items():
@@ -220,6 +252,7 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
 
     try:
         parsed = _extract_json(text)
+        _ensure_figures_tables_cited(parsed)
         _check_for_placeholders(parsed)
         if not parsed.get("references"):
             parsed["references"] = references
