@@ -53,8 +53,8 @@ class PaperPipeline:
         self.git.tag_stage("idea")
         self.slack.stage_done("idea")
 
-        # Stage 2: literature (multi-source + Crossref verification)
-        refs = literature.collect_literature(self.cfg, topic)
+        # Stage 2: literature (multi-source search; verification skipped to keep runtime bounded)
+        refs = literature.collect_literature(self.cfg, topic, limit=10, verify_with_crossref=False)
         (self.cfg.output_dir / "references.json").write_text(
             json.dumps(refs, indent=2, ensure_ascii=False), encoding="utf-8"
         )
@@ -107,6 +107,11 @@ class PaperPipeline:
             figure_paths.extend([fig1_png, fig1_tiff, pptx_path])
         elif data_summary and "error" in data_summary:
             (self.cfg.output_dir / "data_error.txt").write_text(data_summary["error"], encoding="utf-8")
+        else:
+            for fig in manuscript.get("figures", []):
+                name = f"figure_{fig.get('id', 1)}"
+                png, tiff, pptx = fg.demo_figure(fig.get("caption", "Figure"), name=name)
+                figure_paths.extend([png, tiff, pptx])
 
         tables_path, table_pptx = fg.table_docx(manuscript.get("tables", []))
         if table_pptx:

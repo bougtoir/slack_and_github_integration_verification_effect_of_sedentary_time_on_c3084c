@@ -1,5 +1,10 @@
 import json
+import re
 from pathlib import Path
+
+
+def _topic_tokens(text):
+    return set(re.findall(r"\w+", str(text).lower()))
 
 
 JOURNALS = [
@@ -96,23 +101,30 @@ class JournalDB:
             self.journals = JOURNALS
 
     def rank(self, topic, maximize_open_access=False):
-        topic = topic.lower()
+        topic_tokens = _topic_tokens(topic)
         scored = []
         for j in self.journals:
-            match = any(topic in t for t in j.get("topics", []))
+            journal_tokens = set()
+            for t in j.get("topics", []):
+                journal_tokens.update(_topic_tokens(t))
+            overlap = topic_tokens & journal_tokens
+            match = bool(overlap)
             score = j["if_2023"]
             if match:
-                score += 2.0
+                score += 2.0 + len(overlap) * 0.5
             if maximize_open_access and not j.get("hybrid"):
                 score += 1.0
             scored.append({**j, "score": score, "topic_match": match})
         scored.sort(key=lambda x: x["score"], reverse=True)
-        return scored
+        matching = [s for s in scored if s["topic_match"]]
+        if matching:
+            return matching
+        return scored[:3]
 
     def to_table(self, ranked):
         lines = ["| # | Journal | IF 2023 | APC USD | Hybrid | Publisher |"]
         lines.append("|---|---|---|---|---|---|")
-        for i, j in enumerate(ranked[:10]):
+        for i, j in enumerate(ranked[:10], start=1):
             lines.append(
                 f"| {i} | {j['name']} | {j['if_2023']} | {j['apc_usd']} | "
                 f"{'Yes' if j['hybrid'] else 'No'} | {j['publisher']} |"

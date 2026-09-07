@@ -2,9 +2,10 @@ import json
 import os
 import re
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-def _get(url, params=None, headers=None, timeout=30):
+def _get(url, params=None, headers=None, timeout=10):
     try:
         r = requests.get(url, params=params, headers=headers, timeout=timeout)
         r.raise_for_status()
@@ -264,7 +265,7 @@ class OpenAlexClient:
         url = "https://api.openalex.org/works"
         params = {"search": query, "per-page": limit, "mailto": self.mailto}
         try:
-            r = requests.get(url, params=params, timeout=30)
+            r = requests.get(url, params=params, timeout=10)
             r.raise_for_status()
             return r.json().get("results", [])
         except requests.RequestException:
@@ -333,31 +334,55 @@ class MultiSourceSearcher:
 
     def search(self, query, limit=10, verify_with_crossref=True):
         candidates = []
-        # Use Perplexity first for idea/ref discovery, then Crossref/PubMed/OpenAlex
+
+        def _run(name, fn):
+            try:
+                result = fn()
+                return name, result or []
+            except Exception as e:
+                print(f"{name} search failed: {e}")
+                return name, []
+
+        tasks = []
         if self.perplexity.available():
-            candidates.extend(self.perplexity.search(query, limit=limit))
-        for item in self.crossref.search(query, limit=limit):
-            candidates.append(self.crossref.to_reference(item))
-        candidates.extend(self.pubmed.search(query, limit=limit))
-        for work in self.openalex.search(query, limit=limit):
-            candidates.append(self.openalex.to_reference(work))
+            tasks.append(("perplexity", lambda: self.perplexity.search(query, limit=limit)))
+        tasks.extend([
+            ("crossref", lambda: [self.crossref.to_reference(item) for item in self.crossref.search(query, limit=limit)]),
+            ("pubmed", lambda: self.pubmed.search(query, limit=limit)),
+            ("openalex", lambda: [self.openalex.to_reference(work) for work in self.openalex.search(query, limit=limit)]),
+        ])
+
+        with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+            futures = {executor.submit(_run, name, fn): name for name, fn in tasks}
+            for future in as_completed(futures):
+                _, result = future.result()
+                candidates.extend(result)
 
         # Deduplicate before verifying to limit Crossref calls
         candidates = self._dedupe(candidates)
 
         # Verify and enrich with Crossref (existence proof)
-        verified = []
-        for c in candidates[:limit * 2]:
-            if verify_with_crossref:
-                if c.get("doi"):
-                    item = self.crossref.verify(doi=c["doi"])
-                elif c.get("title") and c.get("title") != "Unknown":
-                    item = self.crossref.verify(title=c["title"])
-                else:
-                    item = None
-                if item:
-                    c = self.crossref.to_reference(item)
-            verified.append(c)
+        if verify_with_crossref and candidates:
+            to_verify = candidates[:limit]
+
+            def _verify_one(c):
+                try:
+                    if c.get("doi"):
+                        item = self.crossref.verify(doi=c["doi"])
+                    elif c.get("title") and c.get("title") != "Unknown":
+                        item = self.crossref.verify(title=c["title"])
+                    else:
+                        return c
+                    if item:
+                        return self.crossref.to_reference(item)
+                except Exception as e:
+                    print(f"Crossref verify failed: {e}")
+                return c
+
+            with ThreadPoolExecutor(max_workers=min(10, len(to_verify))) as executor:
+                verified = list(executor.map(_verify_one, to_verify))
+        else:
+            verified = candidates
 
         deduped = self._dedupe(verified)
         # Re-number ids

@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import re
+import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -289,10 +291,13 @@ def _build_pipeline_input(topic: str, background: Optional[str], session: Option
 
 
 async def _run_cli(session: ChatSession, input_data: dict, mode: str = "run") -> dict:
-    container_input = f"/app/workspace/sessions/{session.sid}/input.json"
     payload = json.dumps(input_data, ensure_ascii=False)
     session.output_dir.mkdir(parents=True, exist_ok=True)
-    env_output_dir = f"/app/workspace/sessions/{session.sid}/output"
+    local_input = session.output_dir / "input.json"
+    local_input.write_text(payload, encoding="utf-8")
+    summary_path = session.output_dir / "summary.json"
+
+    env_output_dir = f"/app/workspace/sessions/{session.sid}"
     env_args = [
         "-e", f"OUTPUT_DIR={env_output_dir}",
         "-e", f"WORKSPACE=/app/workspace",
@@ -301,22 +306,55 @@ async def _run_cli(session: ChatSession, input_data: dict, mode: str = "run") ->
         val = os.getenv(key)
         if val:
             env_args.extend(["-e", f"{key}={val}"])
-    cmd = [
-        "docker", "compose", "exec", "-T", *env_args,
-        "sandbox", "sh", "-c",
-        f"mkdir -p {env_output_dir} && cat > {container_input} && python -m paper_sandbox.cli --mode {mode} --input {container_input} --output-summary {env_output_dir}/summary.json",
-    ]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        cwd=str(REPO),
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate(payload.encode("utf-8"))
+
+    use_docker = False
+    if shutil.which("docker"):
+        check = await asyncio.create_subprocess_exec(
+            "docker", "compose", "ps", "--services", "--filter", "status=running",
+            cwd=str(REPO),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await check.communicate()
+        use_docker = "sandbox" in stdout.decode("utf-8", errors="ignore")
+
+    if use_docker:
+        container_input = f"{env_output_dir}/input.json"
+        cmd = [
+            "docker", "compose", "exec", "-T", *env_args,
+            "sandbox", "sh", "-c",
+            f"mkdir -p {env_output_dir} && cat > {container_input} && python -m paper_sandbox.cli --mode {mode} --input {container_input} --output-summary {env_output_dir}/summary.json",
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(REPO),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate(payload.encode("utf-8"))
+    else:
+        env = os.environ.copy()
+        env["OUTPUT_DIR"] = str(session.output_dir)
+        env["WORKSPACE"] = str(SESSIONS_ROOT)
+        env["GIT_AUTO_COMMIT"] = "false"
+        cmd = [
+            sys.executable, "-m", "paper_sandbox.cli",
+            "--mode", mode,
+            "--input", str(local_input),
+            "--output-summary", str(summary_path),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(REPO),
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
     if proc.returncode != 0:
         raise RuntimeError(stderr.decode("utf-8", errors="ignore")[:2000])
-    summary_path = session.output_dir / "summary.json"
     if summary_path.exists():
         return json.loads(summary_path.read_text(encoding="utf-8"))
     return {}

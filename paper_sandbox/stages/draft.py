@@ -38,10 +38,79 @@ def _normalize_manuscript(parsed, references, data_summary=None):
         },
         "figures": parsed.get("figures", []),
         "tables": parsed.get("tables", []),
-        "references": references,
+        "references": parsed.get("references") or references,
         "data_summary": data_summary,
     }
     return normalized
+
+
+def _parse_citation_marker(marker):
+    """Expand a marker like '1,3' or '1-3' or '1,3-5' into ordered ids."""
+    ids = []
+    for token in marker.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            start, end = token.split("-", 1)
+            ids.extend(range(int(start), int(end) + 1))
+        else:
+            ids.append(int(token))
+    return ids
+
+
+def _collapse_numbers(nums):
+    """Collapse a sorted int list into a comma-separated range string."""
+    if not nums:
+        return ""
+    collapsed = []
+    start = prev = nums[0]
+    for n in nums[1:]:
+        if n == prev + 1:
+            prev = n
+        else:
+            collapsed.append(f"{start}-{prev}" if prev != start else str(start))
+            start = prev = n
+    collapsed.append(f"{start}-{prev}" if prev != start else str(start))
+    return ",".join(collapsed)
+
+
+def renumber_citations_vancouver(parsed):
+    """Renumber citations in order of appearance and reorder references."""
+    sections = parsed.get("sections", {})
+    text_all = " ".join([parsed.get("abstract", "")] + list(sections.values()))
+    markers = re.findall(r"\{([^}]+)\}", text_all)
+
+    seen = []
+    seen_set = set()
+    for marker in markers:
+        for cid in _parse_citation_marker(marker):
+            if cid not in seen_set:
+                seen_set.add(cid)
+                seen.append(cid)
+
+    mapping = {old: new for new, old in enumerate(seen, 1)}
+    ref_by_id = {r.get("id", i + 1): r for i, r in enumerate(parsed.get("references", []))}
+
+    def _renumber_marker(match):
+        old_ids = _parse_citation_marker(match.group(1))
+        new_ids = sorted({mapping[oid] for oid in old_ids if oid in mapping})
+        return "{" + _collapse_numbers(new_ids) + "}"
+
+    if parsed.get("abstract"):
+        parsed["abstract"] = re.sub(r"\{([^}]+)\}", _renumber_marker, parsed["abstract"])
+    for key in sections:
+        parsed["sections"][key] = re.sub(r"\{([^}]+)\}", _renumber_marker, sections[key])
+
+    new_refs = []
+    for old_id in seen:
+        ref = ref_by_id.get(old_id)
+        if ref is None:
+            continue
+        ref["id"] = mapping[old_id]
+        new_refs.append(ref)
+    parsed["references"] = new_refs
+    return parsed
 
 
 def _check_for_placeholders(parsed):
@@ -80,10 +149,14 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
     if data_summary and "error" not in data_summary:
         data_block = json.dumps(data_summary, indent=2, ensure_ascii=False)
         mode_instruction = (
-            "A real data summary has been supplied. Use ONLY the numbers in the data summary "
-            "when writing Results. Do not invent sample sizes, p-values, medians, confidence "
-            "intervals, or any other numeric values that are not in the data summary. Cite the "
-            "analysis as performed by the sandbox pipeline."
+            "A real dataset has been supplied. Its source is included in the data summary. "
+            "Use ONLY the numbers in the data summary when writing Results. "
+            "Do not invent sample sizes, p-values, medians, confidence intervals, "
+            "or any other numeric values that are not in the data summary. "
+            "Do not assign exposure, outcome, or group meanings that are not in the data summary; "
+            "describe groups using the exact labels supplied and do not relabel columns. "
+            "Do NOT describe the data as simulated, synthetic, or hypothetical. "
+            "Cite the analysis as performed by the sandbox pipeline."
         )
     elif data_summary and "error" in data_summary:
         data_block = f"Data file was supplied but analysis failed: {data_summary['error']}"
@@ -146,6 +219,9 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
     try:
         parsed = _extract_json(text)
         _check_for_placeholders(parsed)
+        if not parsed.get("references"):
+            parsed["references"] = references
+        parsed = renumber_citations_vancouver(parsed)
         return _normalize_manuscript(parsed, references, data_summary)
     except (json.JSONDecodeError, ValueError) as e:
         print(f"[draft] Failed to parse AI JSON ({e}); using fallback.")

@@ -35,6 +35,7 @@ def analyze_data(path_or_url, numeric_summary=True, group_column=None, value_col
     df = _read_file(file_path)
 
     summary = {
+        "source": str(path_or_url),
         "rows": len(df),
         "columns": list(df.columns),
         "dtypes": {c: str(t) for c, t in df.dtypes.items()},
