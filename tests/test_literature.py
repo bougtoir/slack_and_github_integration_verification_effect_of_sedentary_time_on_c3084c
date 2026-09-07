@@ -74,7 +74,7 @@ def test_collect_literature_never_falls_back_to_unverified_records():
         def __init__(self, cfg):
             self.crossref = CrossrefClient()
 
-        def search(self, q, limit=10, verify_with_crossref=False):
+        def search(self, q, limit=10, verify_with_crossref=False, context=None):
             return [
                 {"doi": "10.9/fake", "title": "Hip fracture incidence trends in Japan (fabricated)", "year": 2020, "authors": ["X"], "journal": "J"},
                 {"doi": "", "pmid": "123", "title": "Hip fracture incidence in Japan 2010-2020", "year": 2021, "authors": ["Y"], "journal": "Bone",
@@ -95,6 +95,45 @@ def test_collect_literature_never_falls_back_to_unverified_records():
     # only the PubMed-proven record survives; fake DOI and peer-review file are dropped
     assert [r.get("pmid") for r in refs] == ["123"]
     assert refs[0]["id"] == 1
+
+
+def test_pool_targets_20_to_30_passes_plan_context_and_dedupes_titles():
+    import paper_sandbox.stages.literature as lit
+
+    assert 20 <= lit.POOL_MIN < lit.POOL_MAX <= 30
+    calls = []
+
+    class FakeSearcher:
+        def __init__(self, cfg):
+            self.crossref = CrossrefClient()
+
+        def search(self, q, limit=10, verify_with_crossref=False, context=None):
+            calls.append((q, limit, context))
+            recs = [{"doi": "", "pmid": str(i), "title": f"Hip fracture incidence Japan study number {i}", "year": 2000 + i,
+                     "authors": ["A"], "journal": "J", "type": "journal-article", "verified_by": "pubmed"} for i in range(40)]
+            recs.append(dict(recs[0], pmid="dup", doi="10.1/dup"))  # same paper, different identifier
+            return recs
+
+    orig = lit.MultiSourceSearcher
+    lit.MultiSourceSearcher = FakeSearcher
+    orig_verify = CrossrefClient.verify
+    CrossrefClient.verify = lambda self, doi=None, title=None: None
+    try:
+        refs = lit.collect_literature(_Cfg(), "hip fracture incidence Japan", idea_text="PLAN TEXT",
+                                      queries=["hip fracture incidence Japan"], client=_Chat("[AI request failed]"))
+    finally:
+        lit.MultiSourceSearcher = orig
+        CrossrefClient.verify = orig_verify
+    assert calls and calls[0][2] == "PLAN TEXT"  # research plan reaches Perplexity as context
+    assert len(refs) == lit.POOL_MAX
+    assert len({r["title"].lower() for r in refs}) == len(refs)
+
+
+def test_doi_verify_tolerates_truncated_title_but_not_unrelated_title():
+    from paper_sandbox.literature_search import titles_compatible
+    full = "Trends in Hip Fracture Incidence in Japan: Estimates Based on Nationwide Hip Fracture Surveys"
+    assert titles_compatible("Trends in hip fracture incidence in Japan", full)
+    assert not titles_compatible("Effect of statins on cardiovascular mortality", full)
 
 
 def test_screen_relevance_can_only_pick_from_given_records():
@@ -120,7 +159,7 @@ def test_renumber_drops_citations_to_nonexistent_references():
 def test_ref_text_forbids_citing_when_nothing_verified():
     assert "Do NOT cite" in draft._ref_text([])
     txt = draft._ref_text([{"title": "T", "year": 2020, "doi": "10.1/x", "journal": "J"}])
-    assert "ONLY" in txt and "[1] T (2020); J; DOI:10.1/x" in txt
+    assert "Never cite a number outside this list" in txt and "[1] T (2020); J; DOI:10.1/x" in txt
 
 
 if __name__ == "__main__":

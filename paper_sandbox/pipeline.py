@@ -129,9 +129,12 @@ class PaperPipeline:
         self.git.tag_stage("idea")
         self.slack.stage_done("idea")
 
-        # Stage 2: literature (LLM-generated queries, relevance filter, Crossref verification)
-        refs = literature.collect_literature(self.cfg, topic, limit=10, verify_with_crossref=True, idea_text=idea_text)
-        (self.cfg.output_dir / "references.json").write_text(
+        # Stage 2: literature pool (20-30 verified records found from the plan via Perplexity + PubMed/
+        # Crossref/OpenAlex). The draft cites from this pool; only cited records become the reference list.
+        refs = literature.collect_literature(
+            self.cfg, topic, limit=literature.POOL_MAX, verify_with_crossref=True, idea_text=idea_text
+        )
+        (self.cfg.output_dir / "references_pool.json").write_text(
             json.dumps(refs, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         self.git.tag_stage("literature")
@@ -145,6 +148,9 @@ class PaperPipeline:
             self.cfg, research_idea, refs, data_summary=data_summary, chosen_journal=chosen_journal
         )
         manuscript["authors"] = input_data.get("authors", ["Sandbox Author"])
+        (self.cfg.output_dir / "references.json").write_text(
+            json.dumps(manuscript.get("references", []), indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         self.git.tag_stage("draft")
         self.slack.stage_done("draft")
 

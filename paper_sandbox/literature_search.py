@@ -53,6 +53,19 @@ def titles_match(a, b):
     return len(small) >= 4 and len(small & big) >= 0.9 * len(small)
 
 
+def titles_compatible(a, b):
+    """Looser check used when a DOI already resolved: the claimed title must share >=50% of its
+    informative tokens with the Crossref title (guards against a wrong DOI pasted next to an
+    unrelated title, while tolerating truncated/paraphrased titles from web search)."""
+    if titles_match(a, b):
+        return True
+    ta, tb = set(_norm_title(a).split()), set(_norm_title(b).split())
+    ta = {t for t in ta if len(t) > 2}
+    tb = {t for t in tb if len(t) > 2}
+    small, big = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    return len(small) >= 3 and len(small & big) >= 0.5 * len(small)
+
+
 def perplexity_create_with_retry(client, params, backoff=_PERPLEXITY_BACKOFF):
     """Call client.responses.create, retrying on HTTP 429 rate limits with backoff."""
     for delay in (*backoff, None):
@@ -145,7 +158,7 @@ class CrossrefClient:
             data = _get(f"https://api.crossref.org/works/{doi}", headers=self.headers)
             if data and "message" in data:
                 item = data["message"]
-                if title and item.get("title") and not titles_match(title, item["title"][0]):
+                if title and item.get("title") and not titles_compatible(title, item["title"][0]):
                     return None
                 return item
             return None
@@ -280,14 +293,24 @@ class PerplexityClient:
                         return block.get("text", "")
         return ""
 
-    def search(self, query, limit=5):
+    def search(self, query, limit=5, context=None):
+        """Web-search for publications. `context` (the research plan) lets Perplexity look for
+        papers that support or complement the plan rather than just keyword matches; every hit
+        is still verified against Crossref/PubMed downstream."""
         if not self.api_key:
             return []
         try:
             from perplexity import Perplexity
             client = Perplexity(api_key=self.api_key)
+            user_input = query
+            if context:
+                user_input = (
+                    f"Find up to {limit} peer-reviewed publications (with DOI) relevant to this search: {query}\n\n"
+                    f"They should provide background, prior findings, comparable data or methods for the following "
+                    f"research plan:\n{context[:2500]}"
+                )
             params = {
-                "input": query,
+                "input": user_input,
                 "instructions": self.system_prompt,
                 "tools": [{"type": "web_search", "search_context_size": "medium"}],
                 "response_format": self._response_schema(),
@@ -419,7 +442,7 @@ class MultiSourceSearcher:
             return raw
         return None
 
-    def search(self, query, limit=10, verify_with_crossref=True):
+    def search(self, query, limit=10, verify_with_crossref=True, context=None):
         candidates = []
 
         def _run(name, fn):
@@ -432,7 +455,7 @@ class MultiSourceSearcher:
 
         tasks = []
         if self.perplexity.available():
-            tasks.append(("perplexity", lambda: self.perplexity.search(query, limit=limit)))
+            tasks.append(("perplexity", lambda: self.perplexity.search(query, limit=limit, context=context)))
         tasks.extend([
             ("crossref", lambda: [self.crossref.to_reference(item) for item in self.crossref.search(query, limit=limit)]),
             ("pubmed", lambda: self.pubmed.search(query, limit=limit)),

@@ -205,8 +205,10 @@ def _ref_text(references):
         return ("No verified references were retrieved. Do NOT cite anything: write without citation markers "
                 "and do not name specific prior studies, authors or their numbers.")
     return (
-        "Cite ONLY the numbered references below (these are verified to exist). Never cite a number outside "
-        "this list and never attribute findings to studies that are not listed.\n"
+        "Reference POOL (all verified to exist). Cite a pool item wherever it supports or complements a statement "
+        "(burden, prior estimates, data sources, methods, mechanisms) - use as many of them as genuinely fit, "
+        "but do not cite items that add nothing; uncited items are dropped automatically. Never cite a number "
+        "outside this list and never attribute findings to studies that are not listed.\n"
         + "\n".join(
             f"[{i}] {r.get('title','Untitled')} ({r.get('year','n.d.')}); {r.get('journal','')}; DOI:{r.get('doi','')}"
             for i, r in enumerate(references, 1)
