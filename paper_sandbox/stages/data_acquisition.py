@@ -220,8 +220,20 @@ def _usable(df):
     return False
 
 
-def acquire_datasets(candidates, data_dir, max_success=6):
-    """Try to download each candidate. Returns (acquired, log_entries)."""
+def _pmcid_of(candidate):
+    for key in ("download_url", "landing_url"):
+        m = re.search(r"(PMC\d+)", candidate.get(key) or "")
+        if m:
+            return m.group(1)
+    return None
+
+
+def acquire_datasets(candidates, data_dir, max_success=6, figure_digitizer=None):
+    """Try to download each candidate. Returns (acquired, log_entries).
+
+    figure_digitizer(pmcid, idx) -> (tables, attempts) is called for open-access articles
+    (tier published_data) so that plan-relevant figures can be digitized in addition to tables.
+    """
     data_dir = Path(data_dir)
     raw_dir = data_dir / "raw"
     parsed_dir = data_dir / "parsed"
@@ -258,11 +270,27 @@ def acquire_datasets(candidates, data_dir, max_success=6):
             raw_path.write_bytes(content)
             entry.update({"final_url": final_url, "content_type": ctype, "bytes": len(content),
                           "sha256": sha, "raw_file": str(raw_path)})
-            frames = _read_tabular(content, ctype, final_url)
-            frames = [(lbl, df) for lbl, df in frames if _usable(df)]
-            if not frames:
-                raise ValueError("downloaded file parsed but contains no usable table (needs >=3 rows, >=2 columns and a numeric column)")
+            table_error = None
+            try:
+                frames = _read_tabular(content, ctype, final_url)
+                frames = [(lbl, df) for lbl, df in frames if _usable(df)]
+            except Exception as e:
+                frames, table_error = [], f"{type(e).__name__}: {str(e)[:120]}"
             tables = []
+            pmcid = _pmcid_of(c)
+            if figure_digitizer and pmcid and c.get("tier") == "published_data":
+                try:
+                    fig_tables, fig_attempts = figure_digitizer(pmcid, idx)
+                except Exception as e:
+                    fig_tables, fig_attempts = [], [{"pmcid": pmcid, "status": "failed",
+                                                     "error": f"{type(e).__name__}: {str(e)[:200]}"}]
+                entry["figure_attempts"] = fig_attempts
+                tables.extend(fig_tables)
+            if not frames and not tables:
+                raise ValueError(
+                    "downloaded file parsed but contains no usable table (needs >=3 rows, >=2 columns and a numeric column)"
+                    + (f"; table parse: {table_error}" if table_error else "")
+                    + ("; no figure could be digitized" if entry.get("figure_attempts") else ""))
             for lbl, df in frames:
                 df = df.dropna(how="all").dropna(axis=1, how="all")
                 out = parsed_dir / f"{idx:02d}_{_slug(c.get('name'))}_{_slug(lbl)}.csv"
@@ -321,6 +349,12 @@ def write_acquisition_log_md(path, discovery_log, attempts, acquired):
         detail = a.get("error") or (
             f"sha256={a.get('sha256', '')[:12]}…, {sum(t['rows'] for t in a.get('tables', []))} rows"
             if a.get("status") == "acquired" else "")
+        n_dig = sum(1 for t in a.get("tables", []) if t.get("digitized"))
+        if n_dig:
+            detail = f"{detail}; {n_dig} figure(s) digitized (approximate pixel read-out)"
+        for fa in a.get("figure_attempts") or []:
+            if fa.get("status") == "failed":
+                detail = f"{detail}; figure {fa.get('figure', '')}: {fa.get('error', '')}"
         lines.append(
             f"| {a['index']} | {a.get('tier') or ''} | {a.get('name') or ''} | {a.get('publisher') or ''} | "
             f"{', '.join(a.get('covers') or [])} | {a['download_url']} | "

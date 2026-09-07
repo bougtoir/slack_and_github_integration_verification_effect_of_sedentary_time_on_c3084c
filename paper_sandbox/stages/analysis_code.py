@@ -41,9 +41,19 @@ def _manifest_text(acquired):
     parts = []
     for a in acquired:
         for t in a.get("tables", []):
+            note = ""
+            if t.get("digitized"):
+                prov = t.get("provenance") or {}
+                note = (
+                    f"\n  NOTE: values were extracted from published figure {prov.get('figure_label')} "
+                    f"of {prov.get('pmcid')} (doi:{prov.get('doi')}). Method: {prov.get('method')}. "
+                    f"Read-out error: {prov.get('readout_error_hint', 'one axis minor division')}. "
+                    "Columns: x,series,y (the CSV starts with '#' comment lines). Label these values as "
+                    "figure-derived (digitized/transcribed) in every result; never present them as your own measurements."
+                )
             parts.append(
                 f"- CSV: {t['csv']}\n  dataset: {a.get('name')} ({a.get('publisher')}); source URL: {a.get('download_url')}\n"
-                f"  shape: {t['rows']} rows x {t['cols']} cols\n  first rows: {json.dumps(t['preview'][:6], ensure_ascii=False)[:1500]}"
+                f"  shape: {t['rows']} rows x {t['cols']} cols\n  first rows: {json.dumps(t['preview'][:6], ensure_ascii=False)[:1500]}{note}"
             )
     return "\n".join(parts)
 

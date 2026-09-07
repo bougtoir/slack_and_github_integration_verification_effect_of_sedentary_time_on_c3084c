@@ -12,3 +12,4 @@ jobs:
       - run: python -m compileall paper_sandbox
       - run: PYTHONPATH=. python tests/test_basic.py
       - run: PYTHONPATH=. python tests/test_data_pipeline.py
+      - run: PYTHONPATH=. python tests/test_figure_digitize.py

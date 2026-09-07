@@ -8,7 +8,8 @@ from paper_sandbox.slack import SlackNotifier
 from paper_sandbox.figure_generator import FigureGenerator
 from paper_sandbox.stages import idea, literature, draft, journal_select
 from paper_sandbox.stages import reviewer_review, checks, rewrite, deliverables
-from paper_sandbox.stages import data_discovery, data_acquisition, analysis_code
+from paper_sandbox.stages import data_discovery, data_acquisition, analysis_code, figure_digitize
+from paper_sandbox.ai_client import AIClient
 
 
 class PaperPipeline:
@@ -27,7 +28,13 @@ class PaperPipeline:
             json.dumps({"log": disc_log, "candidates": candidates}, indent=2, ensure_ascii=False), encoding="utf-8")
         self.slack.send(f"Data discovery: {len(candidates)} candidate sources ({disc_log.get('method')})")
 
-        acquired, attempts = data_acquisition.acquire_datasets(candidates, data_dir)
+        ai = AIClient(self.cfg.deepseek_api_key, self.cfg.deepseek_base_url, self.cfg.deepseek_model)
+        requirements = disc_log.get("requirements") or {}
+
+        def digitizer(pmcid, idx):
+            return figure_digitize.digitize_article(ai, pmcid, requirements, data_dir, idx)
+
+        acquired, attempts = data_acquisition.acquire_datasets(candidates, data_dir, figure_digitizer=digitizer)
         data_acquisition.write_acquisition_log_md(out / "data_acquisition_log.md", disc_log, attempts, acquired)
         self.git.tag_stage("data-acquisition")
         self.slack.stage_done(f"data-acquisition ({len(acquired)} acquired / {len(attempts)} attempted)")
