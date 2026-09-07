@@ -1,10 +1,83 @@
 import json
 import os
 import re
+import time
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+_PERPLEXITY_BACKOFF = (5, 15, 30)
+
+# Crossref work types that are citable scholarly publications.
+CITABLE_TYPES = {"journal-article", "proceedings-article", "book-chapter", "posted-content", "report", "monograph", "book"}
+
+# Titles/DOIs of non-publication records that Crossref indexes alongside articles.
+_NON_ARTICLE_TITLE = re.compile(
+    r"^\s*(review(er)?( report)?|decision letter|author response|editor'?s? (decision|note)|"
+    r"erratum|correction|corrigendum|retraction|retracted|withdrawn|issue information|front matter|"
+    r"back matter|table of contents|masthead|editorial board|index|abstracts? of|poster)\b",
+    re.I,
+)
+_NON_ARTICLE_DOI = re.compile(r"/v\d+/(review|decision|response)\d*$|/(review|decision|response)\d+$", re.I)
 
 
-def _get(url, params=None, headers=None, timeout=30):
+def is_citable(ref):
+    """True only for records that look like a real scholarly publication (not peer-review
+    files, errata, issue matter or entries with no usable title)."""
+    title = ref.get("title") or ""
+    if isinstance(title, list):
+        title = title[0] if title else ""
+    title = title.strip()
+    if not title or title.lower() == "unknown":
+        return False
+    if _NON_ARTICLE_TITLE.search(title) or _NON_ARTICLE_DOI.search(ref.get("doi") or ""):
+        return False
+    t = ref.get("type")
+    if t and t not in CITABLE_TYPES:
+        return False
+    return True
+
+
+def _norm_title(t):
+    return re.sub(r"[^a-z0-9]+", " ", (t or "").lower()).strip()
+
+
+def titles_match(a, b):
+    """Strict title equality after normalisation (or one is a >=90% token-subset of the other)."""
+    na, nb = _norm_title(a), _norm_title(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    ta, tb = set(na.split()), set(nb.split())
+    small, big = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    return len(small) >= 4 and len(small & big) >= 0.9 * len(small)
+
+
+def titles_compatible(a, b):
+    """Looser check used when a DOI already resolved: the claimed title must share >=50% of its
+    informative tokens with the Crossref title (guards against a wrong DOI pasted next to an
+    unrelated title, while tolerating truncated/paraphrased titles from web search)."""
+    if titles_match(a, b):
+        return True
+    ta, tb = set(_norm_title(a).split()), set(_norm_title(b).split())
+    ta = {t for t in ta if len(t) > 2}
+    tb = {t for t in tb if len(t) > 2}
+    small, big = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    return len(small) >= 3 and len(small & big) >= 0.5 * len(small)
+
+
+def perplexity_create_with_retry(client, params, backoff=_PERPLEXITY_BACKOFF):
+    """Call client.responses.create, retrying on HTTP 429 rate limits with backoff."""
+    for delay in (*backoff, None):
+        try:
+            return client.responses.create(**params)
+        except Exception as e:
+            if "429" not in str(e) or delay is None:
+                raise
+            time.sleep(delay)
+
+
+def _get(url, params=None, headers=None, timeout=10):
     try:
         r = requests.get(url, params=params, headers=headers, timeout=timeout)
         r.raise_for_status()
@@ -22,7 +95,13 @@ class CrossrefClient:
 
     def search(self, query, limit=5):
         url = "https://api.crossref.org/works"
-        params = {"query": query, "rows": limit, "mailto": self.mailto, "select": "DOI,title,author,published-print,published-online,container-title"}
+        params = {
+            "query": query,
+            "rows": limit,
+            "mailto": self.mailto,
+            "filter": "type:journal-article",
+            "select": "DOI,title,author,published-print,published-online,container-title,type,abstract",
+        }
         data = _get(url, params=params, headers=self.headers)
         if not data or "message" not in data:
             return []
@@ -55,23 +134,38 @@ class CrossrefClient:
         if isinstance(journal, list) and journal:
             journal = journal[0]
         journal = (journal or "Unknown").strip().replace("\n", " ")
-        return {
+        ref = {
             "doi": doi,
             "title": title or "Unknown",
             "year": year,
             "authors": authors,
             "journal": journal or "Unknown",
+            "type": item.get("type") or "",
+            "verified_by": "crossref",
         }
+        abstract = item.get("abstract")
+        if isinstance(abstract, str) and abstract.strip():
+            abstract = re.sub(r"<[^>]+>", " ", abstract)
+            ref["abstract"] = re.sub(r"\s+", " ", abstract).strip()[:1500]
+        return ref
 
     def verify(self, doi=None, title=None):
+        """Return the Crossref record proving the publication exists, or None.
+
+        A DOI must resolve in Crossref; when only a title is given the Crossref title must
+        match it (no substring matching - short titles otherwise match anything)."""
         if doi:
             data = _get(f"https://api.crossref.org/works/{doi}", headers=self.headers)
             if data and "message" in data:
-                return data["message"]
+                item = data["message"]
+                if title and item.get("title") and not titles_compatible(title, item["title"][0]):
+                    return None
+                return item
+            return None
         if title:
             items = self.search(title, limit=3)
             for item in items:
-                if item.get("title") and title.lower() in item["title"][0].lower():
+                if item.get("title") and titles_match(title, item["title"][0]):
                     return item
         return None
 
@@ -123,10 +217,14 @@ class PubMedClient:
             journal = (doc.get("fulljournalname", "Unknown") or "Unknown").strip().replace("\n", " ")
             results.append({
                 "doi": doi,
+                "pmid": pmid,
                 "title": title,
                 "year": year,
                 "authors": authors,
                 "journal": journal,
+                "type": "journal-article",
+                "pubtypes": doc.get("pubtype") or [],
+                "verified_by": "pubmed",
             })
         return results
 
@@ -195,14 +293,24 @@ class PerplexityClient:
                         return block.get("text", "")
         return ""
 
-    def search(self, query, limit=5):
+    def search(self, query, limit=5, context=None):
+        """Web-search for publications. `context` (the research plan) lets Perplexity look for
+        papers that support or complement the plan rather than just keyword matches; every hit
+        is still verified against Crossref/PubMed downstream."""
         if not self.api_key:
             return []
         try:
             from perplexity import Perplexity
             client = Perplexity(api_key=self.api_key)
+            user_input = query
+            if context:
+                user_input = (
+                    f"Find up to {limit} peer-reviewed publications (with DOI) relevant to this search: {query}\n\n"
+                    f"They should provide background, prior findings, comparable data or methods for the following "
+                    f"research plan:\n{context[:2500]}"
+                )
             params = {
-                "input": query,
+                "input": user_input,
                 "instructions": self.system_prompt,
                 "tools": [{"type": "web_search", "search_context_size": "medium"}],
                 "response_format": self._response_schema(),
@@ -213,7 +321,7 @@ class PerplexityClient:
             else:
                 params["preset"] = self.preset
 
-            response = client.responses.create(**params)
+            response = perplexity_create_with_retry(client, params)
             text = self._extract_text(response)
             refs = []
             if text:
@@ -264,7 +372,7 @@ class OpenAlexClient:
         url = "https://api.openalex.org/works"
         params = {"search": query, "per-page": limit, "mailto": self.mailto}
         try:
-            r = requests.get(url, params=params, timeout=30)
+            r = requests.get(url, params=params, timeout=10)
             r.raise_for_status()
             return r.json().get("results", [])
         except requests.RequestException:
@@ -272,6 +380,7 @@ class OpenAlexClient:
 
     def to_reference(self, work):
         title = (work.get("display_name") or "Unknown").strip().replace("\n", " ")
+        wtype = work.get("type") or ""
         return {
             "doi": work.get("doi", "").replace("https://doi.org/", "") if isinstance(work.get("doi"), str) else "",
             "title": title,
@@ -279,6 +388,8 @@ class OpenAlexClient:
             "authors": [a["author"]["display_name"] for a in work.get("authorships", [])[:3]] if work.get("authorships") else ["Unknown"],
             "journal": (work.get("host_venue") or {}).get("display_name")
                        or ((work.get("primary_location") or {}).get("source") or {}).get("display_name", "Unknown"),
+            "type": {"article": "journal-article", "review": "journal-article", "preprint": "posted-content",
+                     "book-chapter": "book-chapter", "book": "book", "report": "report"}.get(wtype, wtype),
         }
 
 
@@ -331,35 +442,60 @@ class MultiSourceSearcher:
             return raw
         return None
 
-    def search(self, query, limit=10, verify_with_crossref=True):
+    def search(self, query, limit=10, verify_with_crossref=True, context=None):
         candidates = []
-        # Use Perplexity first for idea/ref discovery, then Crossref/PubMed/OpenAlex
+
+        def _run(name, fn):
+            try:
+                result = fn()
+                return name, result or []
+            except Exception as e:
+                print(f"{name} search failed: {e}")
+                return name, []
+
+        tasks = []
         if self.perplexity.available():
-            candidates.extend(self.perplexity.search(query, limit=limit))
-        for item in self.crossref.search(query, limit=limit):
-            candidates.append(self.crossref.to_reference(item))
-        candidates.extend(self.pubmed.search(query, limit=limit))
-        for work in self.openalex.search(query, limit=limit):
-            candidates.append(self.openalex.to_reference(work))
+            tasks.append(("perplexity", lambda: self.perplexity.search(query, limit=limit, context=context)))
+        tasks.extend([
+            ("crossref", lambda: [self.crossref.to_reference(item) for item in self.crossref.search(query, limit=limit)]),
+            ("pubmed", lambda: self.pubmed.search(query, limit=limit)),
+            ("openalex", lambda: [self.openalex.to_reference(work) for work in self.openalex.search(query, limit=limit)]),
+        ])
+
+        with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+            futures = {executor.submit(_run, name, fn): name for name, fn in tasks}
+            for future in as_completed(futures):
+                _, result = future.result()
+                candidates.extend(result)
 
         # Deduplicate before verifying to limit Crossref calls
         candidates = self._dedupe(candidates)
 
         # Verify and enrich with Crossref (existence proof)
-        verified = []
-        for c in candidates[:limit * 2]:
-            if verify_with_crossref:
-                if c.get("doi"):
-                    item = self.crossref.verify(doi=c["doi"])
-                elif c.get("title") and c.get("title") != "Unknown":
-                    item = self.crossref.verify(title=c["title"])
-                else:
-                    item = None
-                if item:
-                    c = self.crossref.to_reference(item)
-            verified.append(c)
+        if verify_with_crossref and candidates:
+            to_verify = candidates[:limit]
 
-        deduped = self._dedupe(verified)
+            def _verify_one(c):
+                try:
+                    if c.get("doi"):
+                        item = self.crossref.verify(doi=c["doi"])
+                    elif c.get("title") and c.get("title") != "Unknown":
+                        item = self.crossref.verify(title=c["title"])
+                    else:
+                        return c
+                    if item:
+                        return self.crossref.to_reference(item)
+                except Exception as e:
+                    print(f"Crossref verify failed: {e}")
+                # PubMed records already prove existence; anything else unverifiable is dropped.
+                return c if c.get("pmid") else None
+
+            with ThreadPoolExecutor(max_workers=min(10, len(to_verify))) as executor:
+                verified = [v for v in executor.map(_verify_one, to_verify) if v]
+        else:
+            verified = candidates
+
+        deduped = self._dedupe([r for r in verified if is_citable(r)])
         # Re-number ids
         for i, r in enumerate(deduped, 1):
             r["id"] = i

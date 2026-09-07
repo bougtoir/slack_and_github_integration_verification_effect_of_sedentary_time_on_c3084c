@@ -1,11 +1,46 @@
 import re
 
 
+_PLACEHOLDER_PATTERNS = ["[to be calculated]", "[tbd]", "to be determined", "[placeholder]", "placeholder", "text placeholder", "not yet available"]
+
+
+def _parse_citation_marker(marker):
+    """Expand a marker like '1,3' or '1-3' into ordered citation ids."""
+    ids = []
+    for token in marker.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            start, end = token.split("-", 1)
+            ids.extend(range(int(start), int(end) + 1))
+        else:
+            ids.append(int(token))
+    return ids
+
+
+def _extract_citation_numbers(text):
+    """Return sorted unique citation numbers found in text."""
+    numbers = []
+    for marker in re.findall(r"\{([^}]+)\}", text):
+        numbers.extend(_parse_citation_marker(marker))
+    return sorted(set(numbers))
+
+
+def contains_placeholder(text):
+    """Return True if the text contains known placeholder markers."""
+    if text is None:
+        return False
+    text = str(text).lower()
+    return any(p in text for p in _PLACEHOLDER_PATTERNS)
+
+
 def fabrication_check(draft):
     issues = []
     text = " ".join(draft.get("sections", {}).values())
     figures = draft.get("figures", [])
     tables = draft.get("tables", [])
+    data_summary = draft.get("data_summary")
 
     for i, fig in enumerate(figures, 1):
         if f"Fig. {i}" not in text and f"Figure {i}" not in text:
@@ -15,18 +50,12 @@ def fabrication_check(draft):
         if f"Table {i}" not in text:
             issues.append(f"Table {i} is not cited in text.")
 
-    citations = re.findall(r"\{(\d+(?:-\d+)?)\}", text)
-    numbers = []
-    if not citations:
+    numbers = _extract_citation_numbers(text)
+    if not numbers:
         issues.append("No citations found in text.")
     else:
-        for c in citations:
-            if "-" in c:
-                start, end = c.split("-")
-                numbers.extend(range(int(start), int(end) + 1))
-            else:
-                numbers.append(int(c))
-        expected = list(range(1, max(numbers or [0]) + 1))
+        max_num = max(numbers)
+        expected = list(range(1, max_num + 1))
         missing = set(expected) - set(numbers)
         if missing:
             issues.append(f"Missing citation numbers: {sorted(missing)}")
@@ -34,13 +63,24 @@ def fabrication_check(draft):
     refs = draft.get("references", [])
     ref_ids = {r["id"] for r in refs}
     for n in numbers:
-        if n not in ref_ids and n <= len(refs):
+        if n not in ref_ids:
             issues.append(f"Citation {n} not in reference list.")
 
-    for fig in figures:
-        if "simulated" not in fig.get("caption", "").lower() and "synthetic" not in fig.get("caption", "").lower():
-            if "simulated" not in text.lower() and "synthetic" not in text.lower():
-                issues.append("Figure caption lacks explicit simulated/synthetic label.")
+    cited = set(numbers)
+    for r in refs:
+        if r.get("id") not in cited:
+            issues.append(f"Reference {r['id']} not cited in text.")
+
+    has_real_data = bool(data_summary) and "error" not in data_summary
+    if not has_real_data:
+        for fig in figures:
+            caption = fig.get("caption", "").lower()
+            label_found = any(
+                k in caption or k in text.lower()
+                for k in ["simulated", "synthetic", "placeholder", "no data", "protocol", "conceptual", "analysis failed", "data unavailable", "pre-analysis", "planned analyses"]
+            )
+            if not label_found:
+                issues.append("Figure caption or text must clearly state that the figure is not based on supplied empirical data (simulated/placeholder/protocol/conceptual/data unavailable).")
 
     return issues
 
@@ -48,9 +88,17 @@ def fabrication_check(draft):
 def reproducibility_check(draft):
     issues = []
     text = " ".join(draft.get("sections", {}).values())
-    if "simulated" not in text.lower() and "synthetic" not in text.lower():
-        issues.append("Methods must state whether data are real, simulated, or from a public source.")
-    if "code" not in text.lower() and "script" not in text.lower():
+    data_summary = draft.get("data_summary")
+    has_real_data = bool(data_summary) and "error" not in data_summary
+    source_keywords = ["simulated", "synthetic", "public", "no data", "protocol", "analysis failed", "data unavailable", "pre-analysis", "planned analyses"]
+    if not has_real_data and not any(k in text.lower() for k in source_keywords):
+        issues.append("Methods must state whether data are real, simulated, public, not yet supplied (protocol), or failed to load.")
+    reproducibility_terms = [
+        "code", "script", "availability", "reproducible", "github", "repository",
+        "data availability", "prospero", "registered", "search strategy",
+        "published studies", "data extraction",
+    ]
+    if not any(t in text.lower() for t in reproducibility_terms):
         issues.append("Mention data/code availability for reproducibility.")
     return issues
 
@@ -60,12 +108,16 @@ def consistency_check(draft):
     intro = draft.get("sections", {}).get("introduction", "")
     results = draft.get("sections", {}).get("results", "")
     discussion = draft.get("sections", {}).get("discussion", "")
+    data_summary = draft.get("data_summary")
+    has_real_data = bool(data_summary) and "error" not in data_summary
+    text = (intro + results + discussion).lower()
+    is_protocol = "protocol" in text or "pre-analysis" in text or "planned analyses" in text
 
-    if "hypothesis" in intro.lower() and "hypothesis" not in results.lower():
+    if not is_protocol and "hypothesis" in intro.lower() and "hypothesis" not in results.lower():
         issues.append("Hypothesis mentioned in intro but not addressed in results.")
-    if "evidence" in discussion.lower() and "evidence" not in results.lower():
+    if not is_protocol and not has_real_data and "evidence" in discussion.lower() and "evidence" not in results.lower():
         issues.append("Discussion refers to 'evidence' not clearly shown in results.")
-    if "causal" in discussion.lower() or "cause" in discussion.lower():
+    if re.search(r"\bcausal(?:ly)?\b|\bcauses?\b|\bcaused\b|\bcausing\b", discussion, re.IGNORECASE):
         issues.append("Discussion contains causal language; ensure it is supported by design.")
     return issues
 
@@ -106,15 +158,18 @@ def pre_submission_checklist(draft, chosen_journal=None, data_summary=None, lang
     figures = draft.get("figures", [])
     tables = draft.get("tables", [])
     refs = draft.get("references", [])
-    citations = re.findall(r"\{(\d+(?:-\d+)?)\}", text)
-    cited_numbers = []
-    for c in citations:
-        if "-" in c:
-            start, end = c.split("-")
-            cited_numbers.extend(range(int(start), int(end) + 1))
-        else:
-            cited_numbers.append(int(c))
-    cited_numbers = sorted(set(cited_numbers))
+    cited_numbers = _extract_citation_numbers(text)
+
+    has_real_data = bool(data_summary) and "error" not in data_summary
+    data_unavailable = bool(data_summary) and "error" in data_summary
+    source_mentioned = any(k in text.lower() for k in ["simulated", "synthetic", "public", "no data", "protocol", "analysis failed", "data unavailable", "pre-analysis", "planned analyses"])
+    no_placeholders = not any(p in text.lower() for p in ["[to be calculated]", "placeholder", "tbd", "to be determined"])
+    protocol_keywords = ["protocol", "no data", "analysis failed", "data unavailable", "pre-analysis", "planned analyses"]
+    reproducibility_terms = [
+        "code", "script", "availability", "reproducible", "github", "repository",
+        "data availability", "prospero", "registered", "search strategy",
+        "published studies", "data extraction",
+    ]
 
     def status(condition, ok="OK", ng="CHECK"):
         return ok if condition else ng
@@ -130,11 +185,12 @@ def pre_submission_checklist(draft, chosen_journal=None, data_summary=None, lang
         ("図表 / Figures & Tables", "全 Figure が本文中で言及されている", status(all((f"Fig. {i}" in text or f"Figure {i}" in text) for i in range(1, len(figures) + 1)))),
         ("図表 / Figures & Tables", "全 Table が本文中で言及されている", status(all(f"Table {i}" in text for i in range(1, len(tables) + 1)))),
         ("図表 / Figures & Tables", "図表番号が出現順", status(cited_numbers == list(range(1, len(cited_numbers) + 1)) if cited_numbers else True)),
-        ("図表 / Figures & Tables", "表は編集可能 docx/PPTX も別途提供", status(True, "MANUAL")),  # deliverables responsibility
-        ("再現性 / Reproducibility", "Methods にデータ出所（実データ or シミュレーション）を明記", status("simulated" in text.lower() or "synthetic" in text.lower() or "public" in text.lower() or bool(data_summary))),
-        ("再現性 / Reproducibility", "数値が results ファイルから再現可能でハードコートされていない", status(bool(data_summary) or "placeholder" in text.lower() or "to be calculated" in text.lower())),
-        ("再現性 / Reproducibility", "Data/Code Availability または倫理面の記載がある", status("availability" in text.lower() or "code" in text.lower() or "data" in text.lower())),
-        ("主張 / Claims", "因果的・過度な解釈をしていない", status("causal" not in text.lower() and "cause" not in text.lower())),
+        ("図表 / Figures & Tables", "表は編集可能 docx/PPTX も別途提供", status(True, "MANUAL")),
+        ("再現性 / Reproducibility", "Methods にデータ出所（実データ or シミュレーション）を明記", status(source_mentioned or has_real_data or data_unavailable)),
+        ("再現性 / Reproducibility", "数値が results ファイルから再現可能でハードコートされていない", status(no_placeholders and (has_real_data or any(k in text.lower() for k in protocol_keywords)))),
+        ("再現性 / Reproducibility", "Data/Code Availability または倫理面の記載がある", status(any(t in text.lower() for t in reproducibility_terms))),
+
+        ("主張 / Claims", "因果的・過度な解釈をしていない", status(not re.search(r"\bcausal(?:ly)?\b|\bcauses?\b|\bcaused\b|\bcausing\b", text, re.IGNORECASE))),
         ("主張 / Claims", "探索的結果と仮説検証を区別している", status("exploratory" in text.lower() or "hypothesis" in text.lower())),
         ("書式 / Formatting", "全角日本語文字が英語原稿に含まれていない", status(not re.search(r"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]", text))),
         ("書式 / Formatting", "LaTeX 数式表記がなく、Word 数式を使用", status(not re.search(r"\$[^$]+\$|\\\\\\[|\\\\\\]", text))),
@@ -149,8 +205,10 @@ def pre_submission_checklist(draft, chosen_journal=None, data_summary=None, lang
     lines = ["# Pre-Submission Checklist", ""]
     journal_name = chosen_journal.get("name") if chosen_journal else "Not selected"
     lines.append(f"Target journal: {journal_name}")
-    if data_summary:
+    if has_real_data:
         lines.append("Data summary: supplied")
+    elif data_unavailable:
+        lines.append("Data summary: analysis failed")
     else:
         lines.append("Data summary: not supplied (protocol mode)")
     lines.append("")

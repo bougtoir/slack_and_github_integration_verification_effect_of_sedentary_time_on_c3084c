@@ -55,7 +55,7 @@ class ManuscriptWriter:
         # Sections
         for section in ["Introduction", "Methods", "Results", "Discussion", "Conclusion"]:
             doc.add_heading(section, level=1)
-            text = data.get("sections", {}).get(section.lower(), f"{section} text placeholder.")
+            text = data.get("sections", {}).get(section.lower(), "")
             add_superscript_runs(doc.add_paragraph(), text)
 
             # Insert figures/tables after first mention in this section

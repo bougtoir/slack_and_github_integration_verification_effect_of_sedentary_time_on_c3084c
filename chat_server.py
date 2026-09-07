@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import re
+import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -289,10 +291,13 @@ def _build_pipeline_input(topic: str, background: Optional[str], session: Option
 
 
 async def _run_cli(session: ChatSession, input_data: dict, mode: str = "run") -> dict:
-    container_input = f"/app/workspace/sessions/{session.sid}/input.json"
     payload = json.dumps(input_data, ensure_ascii=False)
     session.output_dir.mkdir(parents=True, exist_ok=True)
-    env_output_dir = f"/app/workspace/sessions/{session.sid}/output"
+    local_input = session.output_dir / "input.json"
+    local_input.write_text(payload, encoding="utf-8")
+    summary_path = session.output_dir / "summary.json"
+
+    env_output_dir = f"/app/workspace/sessions/{session.sid}"
     env_args = [
         "-e", f"OUTPUT_DIR={env_output_dir}",
         "-e", f"WORKSPACE=/app/workspace",
@@ -301,22 +306,55 @@ async def _run_cli(session: ChatSession, input_data: dict, mode: str = "run") ->
         val = os.getenv(key)
         if val:
             env_args.extend(["-e", f"{key}={val}"])
-    cmd = [
-        "docker", "compose", "exec", "-T", *env_args,
-        "sandbox", "sh", "-c",
-        f"mkdir -p {env_output_dir} && cat > {container_input} && python -m paper_sandbox.cli --mode {mode} --input {container_input} --output-summary {env_output_dir}/summary.json",
-    ]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        cwd=str(REPO),
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate(payload.encode("utf-8"))
+
+    use_docker = False
+    if shutil.which("docker"):
+        check = await asyncio.create_subprocess_exec(
+            "docker", "compose", "ps", "--services", "--filter", "status=running",
+            cwd=str(REPO),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await check.communicate()
+        use_docker = "sandbox" in stdout.decode("utf-8", errors="ignore")
+
+    if use_docker:
+        container_input = f"{env_output_dir}/input.json"
+        cmd = [
+            "docker", "compose", "exec", "-T", *env_args,
+            "sandbox", "sh", "-c",
+            f"mkdir -p {env_output_dir} && cat > {container_input} && python -m paper_sandbox.cli --mode {mode} --input {container_input} --output-summary {env_output_dir}/summary.json",
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(REPO),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate(payload.encode("utf-8"))
+    else:
+        env = os.environ.copy()
+        env["OUTPUT_DIR"] = str(session.output_dir)
+        env["WORKSPACE"] = str(SESSIONS_ROOT)
+        env["GIT_AUTO_COMMIT"] = "false"
+        cmd = [
+            sys.executable, "-m", "paper_sandbox.cli",
+            "--mode", mode,
+            "--input", str(local_input),
+            "--output-summary", str(summary_path),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(REPO),
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
     if proc.returncode != 0:
         raise RuntimeError(stderr.decode("utf-8", errors="ignore")[:2000])
-    summary_path = session.output_dir / "summary.json"
     if summary_path.exists():
         return json.loads(summary_path.read_text(encoding="utf-8"))
     return {}
@@ -467,7 +505,8 @@ def _revision_worker(job_id: str, session: ChatSession, original_docx_path: Path
         figure_paths = []
         if revised.get("figures"):
             for fig in revised["figures"]:
-                png, tiff, pptx = fg.demo_figure(fig.get("caption", "Figure"))
+                name = f"figure_{fig.get('id', 1)}"
+                png, tiff, pptx = fg.demo_figure(fig.get("caption", "Figure"), name=name)
                 figure_paths.extend([png, tiff, pptx])
 
         tables_path, table_pptx = fg.table_docx(revised.get("tables", []))
@@ -567,17 +606,18 @@ async def journal_candidates(req: CandidateRequest):
     session = sessions.get(req.session_id)
     if not session:
         return JSONResponse({"ok": False, "error": "Session not found"}, status_code=404)
-    topic, _ = _resolve_topic_and_background(session)
+    topic, background = _resolve_topic_and_background(session)
     if not topic:
         return JSONResponse({"ok": False, "error": "No topic found in session"}, status_code=400)
 
-    ranked, table_md = await asyncio.to_thread(journal_select.select_journals, cfg, topic, False)
+    ranked, table_md = await asyncio.to_thread(journal_select.select_journals, cfg, topic, False, background)
     session.output_dir.mkdir(parents=True, exist_ok=True)
     (session.output_dir / "journal_candidates.md").write_text(table_md, encoding="utf-8")
     session.candidates = ranked[:10]
 
     candidates = [
-        {"index": i, "name": j["name"], "if_2023": j["if_2023"], "apc_usd": j["apc_usd"], "hybrid": j["hybrid"], "publisher": j["publisher"]}
+        {"index": i, "name": j["name"], "if_2023": j.get("if_2023"), "apc_usd": j.get("apc_usd"), "hybrid": j.get("hybrid"),
+         "publisher": j.get("publisher"), "issn": j.get("issn"), "why": j.get("why", ""), "verified": j.get("verified", False)}
         for i, j in enumerate(ranked[:10])
     ]
     return JSONResponse({

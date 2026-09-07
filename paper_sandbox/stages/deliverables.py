@@ -32,6 +32,13 @@ def build_deliverables(cfg, draft, chosen_journal, figures, tables_path, check_r
         "figures": [str(p) for p in figures],
         "tables": str(tables_path) if tables_path else None,
     }
+    provenance_items = [
+        out / "data_acquisition_log.md", out / "dataset_candidates.json", out / "analysis.py",
+        out / "analysis_log.json", out / "data_summary.json", out / "data_error.txt",
+        out / "references.json",
+    ]
+    provenance_dirs = [out / "data", out / "results"]
+    packaged["provenance"] = [str(p) for p in provenance_items if p.exists()] + [str(d) for d in provenance_dirs if d.exists()]
     with open(out / "manifest.json", "w") as f:
         json.dump(packaged, f, indent=2, ensure_ascii=False)
 
@@ -47,5 +54,13 @@ def build_deliverables(cfg, draft, chosen_journal, figures, tables_path, check_r
             zf.write(p, f"figures/{Path(p).name}")
         if tables_path:
             zf.write(tables_path, f"tables/{Path(tables_path).name}")
+        for p in provenance_items:
+            if p.exists():
+                zf.write(p, f"provenance/{p.name}")
+        for d in provenance_dirs:
+            if d.exists():
+                for p in d.rglob("*"):
+                    if p.is_file():
+                        zf.write(p, f"provenance/{p.relative_to(out)}")
 
     return packaged, zip_path
