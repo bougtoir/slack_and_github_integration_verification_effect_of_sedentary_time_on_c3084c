@@ -165,7 +165,8 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
             "p-values, medians, regression coefficients, or any other empirical numbers. "
             "Do not use placeholders such as [to be calculated] or [TBD]. Clearly state in Methods "
             "that data access or analysis failed and describe the planned analysis once data are available. "
-            "If a figure or table is included, describe it as a conceptual workflow, not empirical results."
+            "Omit the `tables` field; do not include empirical tables. "
+            "If a figure is included, describe it as a conceptual workflow and cite it as (Fig. 1), not empirical results."
         )
     else:
         data_block = "No data file was supplied."
@@ -174,7 +175,8 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
             "Do not invent sample sizes, p-values, medians, regression coefficients, or any "
             "other empirical numbers. Do not use placeholders such as [to be calculated] or [TBD]. "
             "Clearly state that Results are planned analyses and that the current draft is a protocol. "
-            "If a figure or table is included, describe it as a conceptual workflow, not empirical results."
+            "Omit the `tables` field from the JSON; do not include empirical tables. "
+            "If a figure is included, describe it as a conceptual workflow and cite it as (Fig. 1), not empirical results."
         )
 
     journal_block = ""

@@ -93,7 +93,11 @@ def reproducibility_check(draft):
     source_keywords = ["simulated", "synthetic", "public", "no data", "protocol", "analysis failed", "data unavailable", "pre-analysis", "planned analyses"]
     if not has_real_data and not any(k in text.lower() for k in source_keywords):
         issues.append("Methods must state whether data are real, simulated, public, not yet supplied (protocol), or failed to load.")
-    reproducibility_terms = ["code", "script", "availability", "reproducible", "github", "repository", "data availability"]
+    reproducibility_terms = [
+        "code", "script", "availability", "reproducible", "github", "repository",
+        "data availability", "prospero", "registered", "search strategy",
+        "published studies", "data extraction",
+    ]
     if not any(t in text.lower() for t in reproducibility_terms):
         issues.append("Mention data/code availability for reproducibility.")
     return issues
@@ -161,7 +165,11 @@ def pre_submission_checklist(draft, chosen_journal=None, data_summary=None, lang
     source_mentioned = any(k in text.lower() for k in ["simulated", "synthetic", "public", "no data", "protocol", "analysis failed", "data unavailable", "pre-analysis", "planned analyses"])
     no_placeholders = not any(p in text.lower() for p in ["[to be calculated]", "placeholder", "tbd", "to be determined"])
     protocol_keywords = ["protocol", "no data", "analysis failed", "data unavailable", "pre-analysis", "planned analyses"]
-    reproducibility_terms = ["code", "script", "availability", "reproducible", "github", "repository", "data availability"]
+    reproducibility_terms = [
+        "code", "script", "availability", "reproducible", "github", "repository",
+        "data availability", "prospero", "registered", "search strategy",
+        "published studies", "data extraction",
+    ]
 
     def status(condition, ok="OK", ng="CHECK"):
         return ok if condition else ng
