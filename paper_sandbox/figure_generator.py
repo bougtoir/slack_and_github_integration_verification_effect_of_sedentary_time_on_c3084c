@@ -61,6 +61,17 @@ class FigureGenerator:
         prs.save(path)
         return str(path)
 
+    def from_png(self, src_png, caption, name="figure_1"):
+        """Register a PNG produced by the analysis script (copy + TIFF + PPTX)."""
+        png_bytes = Path(src_png).read_bytes()
+        png_path = self.output_dir / f"{name}.png"
+        tiff_path = self.output_dir / f"{name}.tiff"
+        pptx_path = self.output_dir / f"{name}.pptx"
+        png_path.write_bytes(png_bytes)
+        tiff_path.write_bytes(_save_tiff_from_png(png_bytes))
+        self._make_pptx(pptx_path, caption, png_bytes)
+        return str(png_path), str(tiff_path), str(pptx_path)
+
     def demo_figure(self, caption, name="figure_1"):
         """Generate a clear placeholder figure when no data is supplied."""
         plt.figure(figsize=(6, 4))

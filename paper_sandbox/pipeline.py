@@ -8,6 +8,7 @@ from paper_sandbox.slack import SlackNotifier
 from paper_sandbox.figure_generator import FigureGenerator
 from paper_sandbox.stages import idea, literature, draft, journal_select
 from paper_sandbox.stages import reviewer_review, checks, rewrite, deliverables
+from paper_sandbox.stages import data_discovery, data_acquisition, analysis_code
 
 
 class PaperPipeline:
@@ -17,10 +18,69 @@ class PaperPipeline:
         self.git = GitTracker(cfg, root=str(cfg.workspace))
         self.figures_dir = cfg.output_dir / "figures"
 
-    def _data_summary(self, input_data):
+    def _acquire_and_analyze(self, topic, idea_text):
+        """Discover public data, download it, run generated analysis. Never invents data."""
+        out = self.cfg.output_dir
+        data_dir = out / "data"
+        candidates, disc_log = data_discovery.discover_datasets(self.cfg, topic, idea_text)
+        (out / "dataset_candidates.json").write_text(
+            json.dumps({"log": disc_log, "candidates": candidates}, indent=2, ensure_ascii=False), encoding="utf-8")
+        self.slack.send(f"Data discovery: {len(candidates)} candidate sources ({disc_log.get('method')})")
+
+        acquired, attempts = data_acquisition.acquire_datasets(candidates, data_dir)
+        data_acquisition.write_acquisition_log_md(out / "data_acquisition_log.md", disc_log, attempts, acquired)
+        self.git.tag_stage("data-acquisition")
+        self.slack.stage_done(f"data-acquisition ({len(acquired)} acquired / {len(attempts)} attempted)")
+
+        attempted = [
+            {"name": a.get("name"), "url": a["download_url"], "status": a["status"], "error": a.get("error")}
+            for a in attempts
+        ]
+        if not acquired:
+            return {
+                "error": "No public dataset could be downloaded and parsed.",
+                "attempted_sources": attempted,
+                "discovery": disc_log,
+            }
+
+        results, alog = analysis_code.run_generated_analysis(self.cfg, topic, idea_text, acquired, out)
+        (out / "analysis_log.json").write_text(json.dumps(alog, indent=2, ensure_ascii=False), encoding="utf-8")
+        self.git.tag_stage("analysis")
+        datasets = [
+            {k: a.get(k) for k in ("name", "publisher", "landing_url", "download_url", "final_url",
+                                    "sha256", "bytes", "attempted_at", "raw_file", "license", "years")}
+            | {"tables": [{k: t[k] for k in ("csv", "rows", "cols")} for t in a.get("tables", [])]}
+            for a in acquired
+        ]
+        if results is None:
+            reason = alog.get("unusable_reason")
+            msg = (
+                f"Datasets were downloaded but do not contain data that can answer the question: {reason}"
+                if reason else "Datasets were acquired but the analysis script failed."
+            )
+            self.slack.send(f"{msg} No empirical results.")
+            return {
+                "error": msg,
+                "attempted_sources": attempted,
+                "datasets": datasets,
+                "analysis_attempts": alog["attempts"],
+            }
+        self.slack.stage_done(f"analysis ({len(results.get('findings', []))} findings)")
+        summary = {
+            "source": "public data acquired automatically; see data/provenance.json",
+            "datasets": datasets,
+            "analysis": results,
+            "attempted_sources": attempted,
+        }
+        (out / "data_summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+        return summary
+
+    def _data_summary(self, input_data, topic=None, idea_text=""):
         data_url = input_data.get("data_url") or input_data.get("data_file")
         if not data_url:
-            return None
+            if input_data.get("skip_data_acquisition"):
+                return None
+            return self._acquire_and_analyze(topic or input_data.get("topic", ""), idea_text)
         try:
             summary, df = analyze_data(
                 data_url,
@@ -53,16 +113,16 @@ class PaperPipeline:
         self.git.tag_stage("idea")
         self.slack.stage_done("idea")
 
-        # Stage 2: literature (multi-source search; verification skipped to keep runtime bounded)
-        refs = literature.collect_literature(self.cfg, topic, limit=10, verify_with_crossref=False)
+        # Stage 2: literature (LLM-generated queries, relevance filter, Crossref verification)
+        refs = literature.collect_literature(self.cfg, topic, limit=10, verify_with_crossref=True, idea_text=idea_text)
         (self.cfg.output_dir / "references.json").write_text(
             json.dumps(refs, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         self.git.tag_stage("literature")
         self.slack.stage_done("literature")
 
-        # Stage 3: optional data analysis
-        data_summary = self._data_summary(input_data)
+        # Stage 3: data (user-supplied file, or discover -> acquire -> analyze public data)
+        data_summary = self._data_summary(input_data, topic=topic, idea_text=idea_text)
 
         # Stage 4: draft (tailored to chosen journal)
         manuscript = draft.generate_draft(
@@ -102,12 +162,19 @@ class PaperPipeline:
         # Stage 9: generate figures and tables
         fg = FigureGenerator(self.figures_dir)
         figure_paths = []
-        if data_summary and "error" not in data_summary:
+        if data_summary and "error" not in data_summary and data_summary.get("analysis"):
+            for fig in data_summary["analysis"].get("figures", []):
+                src = self.cfg.output_dir / fig.get("file", "")
+                if src.exists():
+                    png, tiff, pptx = fg.from_png(src, fig.get("caption", ""), name=f"figure_{fig.get('id', 1)}")
+                    figure_paths.extend([png, tiff, pptx])
+        elif data_summary and "error" not in data_summary:
             fig1_png, fig1_tiff, pptx_path = fg.from_data_summary(data_summary, "figure_1")
             figure_paths.extend([fig1_png, fig1_tiff, pptx_path])
-        elif data_summary and "error" in data_summary:
-            (self.cfg.output_dir / "data_error.txt").write_text(data_summary["error"], encoding="utf-8")
         else:
+            if data_summary and "error" in data_summary:
+                (self.cfg.output_dir / "data_error.txt").write_text(
+                    json.dumps(data_summary, indent=2, ensure_ascii=False), encoding="utf-8")
             for fig in manuscript.get("figures", []):
                 name = f"figure_{fig.get('id', 1)}"
                 png, tiff, pptx = fg.demo_figure(fig.get("caption", "Figure"), name=name)

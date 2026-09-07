@@ -1,8 +1,22 @@
 import json
 import os
 import re
+import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+_PERPLEXITY_BACKOFF = (5, 15, 30)
+
+
+def perplexity_create_with_retry(client, params, backoff=_PERPLEXITY_BACKOFF):
+    """Call client.responses.create, retrying on HTTP 429 rate limits with backoff."""
+    for delay in (*backoff, None):
+        try:
+            return client.responses.create(**params)
+        except Exception as e:
+            if "429" not in str(e) or delay is None:
+                raise
+            time.sleep(delay)
 
 
 def _get(url, params=None, headers=None, timeout=10):
@@ -214,7 +228,7 @@ class PerplexityClient:
             else:
                 params["preset"] = self.preset
 
-            response = client.responses.create(**params)
+            response = perplexity_create_with_retry(client, params)
             text = self._extract_text(response)
             refs = []
             if text:

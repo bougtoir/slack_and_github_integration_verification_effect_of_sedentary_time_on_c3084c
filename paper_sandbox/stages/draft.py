@@ -1,26 +1,35 @@
 import json
 import re
+from pathlib import Path
 
 from paper_sandbox.ai_client import AIClient
 from paper_sandbox.stages.checks import contains_placeholder
 
 
 def _repair_json(s):
-    # Remove single-line C++/JavaScript-style comments (not valid in JSON)
-    s = re.sub(r"//[^\n]*", "", s)
+    # Remove line comments that start a line (a bare "//" would also hit URLs inside strings)
+    s = re.sub(r"(?m)^\s*//[^\n]*", "", s)
     # Remove trailing commas before } or ]
     s = re.sub(r",(\s*[}\]])", r"\1", s)
     return s
+
+
+def _loads(s):
+    # strict=False tolerates raw newlines/tabs inside strings, which LLMs often emit
+    try:
+        return json.loads(s, strict=False)
+    except json.JSONDecodeError:
+        return json.loads(_repair_json(s), strict=False)
 
 
 def _extract_json(text):
     text = text.strip()
     m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     if m:
-        return json.loads(_repair_json(m.group(1)))
+        return _loads(m.group(1))
     m = re.search(r"(\{.*\})", text, re.DOTALL)
     if m:
-        return json.loads(_repair_json(m.group(1)))
+        return _loads(m.group(1))
     raise ValueError("No JSON object found")
 
 
@@ -178,7 +187,33 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
 
     refs = _ref_text(references)
 
-    if data_summary and "error" not in data_summary:
+    analysis = (data_summary or {}).get("analysis") if data_summary and "error" not in data_summary else None
+    if analysis:
+        data_block = json.dumps({
+            "datasets": data_summary.get("datasets"),
+            "sample_description": analysis.get("sample_description"),
+            "findings": analysis.get("findings"),
+            "tables": analysis.get("tables"),
+            "figures": analysis.get("figures"),
+            "limitations": analysis.get("limitations"),
+            "sources_attempted_but_failed": [s for s in data_summary.get("attempted_sources", []) if s.get("status") == "failed"],
+        }, indent=2, ensure_ascii=False)
+        mode_instruction = (
+            "Real PUBLIC datasets were downloaded by the pipeline (URLs, publishers and SHA-256 checksums are in "
+            "`datasets`) and analysed by a reproducible script (analysis.py) whose outputs are in `findings`, "
+            "`tables` and `figures`. Write an EMPIRICAL manuscript: in Methods, name each data source with its "
+            "publisher and URL, describe the sample (`sample_description`) and the computations described in each "
+            "finding's `method`. In Results report ONLY the numbers in `findings`/`tables`, verbatim, with units. "
+            "Do not invent sample sizes, p-values, confidence intervals or any number absent from the data. "
+            "Do not assign meanings to variables beyond what the dataset names and finding labels state. "
+            "If a dataset is a published article or report (e.g. a PMC/journal URL), describe it honestly as data "
+            "extracted from the published tables of that article, name the article, and treat the work as a secondary "
+            "analysis of published aggregate data; do not call it a registry or primary dataset. "
+            "Do NOT describe the data as simulated, synthetic or hypothetical. Mention `limitations` in Discussion. "
+            "Cite the tables and figures listed (Table N / Fig. N) using the SAME ids and captions; copy `tables` "
+            "and `figures` into the JSON output unchanged. State that code and data are available in the repository."
+        )
+    elif data_summary and "error" not in data_summary:
         data_block = json.dumps(data_summary, indent=2, ensure_ascii=False)
         mode_instruction = (
             "A real dataset has been supplied. Its source is included in the data summary. "
@@ -191,12 +226,17 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
             "Cite the analysis as performed by the sandbox pipeline."
         )
     elif data_summary and "error" in data_summary:
-        data_block = f"Data file was supplied but analysis failed: {data_summary['error']}"
+        attempted = data_summary.get("attempted_sources") or []
+        data_block = f"Data acquisition/analysis failed: {data_summary['error']}"
+        if attempted:
+            data_block += "\nSources the pipeline actually attempted:\n" + "\n".join(
+                f"- {s.get('name')}: {s.get('url')} -> {s.get('status')} ({s.get('error') or 'ok'})" for s in attempted)
         mode_instruction = (
-            "A data file was supplied but could not be analyzed. Do not invent sample sizes, "
+            "The pipeline tried to obtain data but could not analyse any. Do not invent sample sizes, "
             "p-values, medians, regression coefficients, or any other empirical numbers. "
             "Do not use placeholders such as [to be calculated] or [TBD]. Clearly state in Methods "
-            "that data access or analysis failed and describe the planned analysis once data are available. "
+            "that data access or analysis failed, list the sources that were attempted and why each failed, "
+            "and describe the planned analysis once data are available. Label the manuscript as a protocol. "
             "Omit the `tables` field; do not include empirical tables. "
             "If a figure is included, describe it as a conceptual workflow and cite it as (Fig. 1), not empirical results."
         )
@@ -246,12 +286,33 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
         '}'
     )
 
-    text = client.chat(prompt, temperature=0.6)
+    text = client.chat(prompt, temperature=0.6, json_mode=True)
     if not text or text.startswith("[AI"):
         return _normalize_manuscript({"title": "Research protocol", "abstract": "AI client unavailable; protocol not generated."}, references, data_summary)
 
     try:
-        parsed = _extract_json(text)
+        try:
+            parsed = _extract_json(text)
+        except (json.JSONDecodeError, ValueError) as e:
+            # one repair round-trip before giving up: ask the model to re-emit strictly valid JSON
+            fixed = client.chat(
+                "The following was supposed to be a single valid JSON object but failed to parse "
+                f"({e}). Return the SAME content as strictly valid JSON only, escaping newlines and quotes "
+                "inside strings; do not change any numbers or wording.\n\n" + text,
+                temperature=0.0,
+                json_mode=True,
+            )
+            parsed = _extract_json(fixed)
+        if analysis:
+            # numbers in tables/figures must come from the analysis output, not the LLM
+            parsed["tables"] = [
+                {"id": t.get("id", i), "caption": t.get("caption", ""), "headers": t.get("headers", []), "rows": t.get("rows", [])}
+                for i, t in enumerate(analysis.get("tables", []), 1)
+            ]
+            parsed["figures"] = [
+                {"id": f.get("id", i), "caption": f.get("caption", "")}
+                for i, f in enumerate(analysis.get("figures", []), 1)
+            ]
         _ensure_figures_tables_cited(parsed)
         _check_for_placeholders(parsed)
         if not parsed.get("references"):
@@ -260,4 +321,7 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
         return _normalize_manuscript(parsed, references, data_summary)
     except (json.JSONDecodeError, ValueError) as e:
         print(f"[draft] Failed to parse AI JSON ({e}); using fallback.")
+        out_dir = getattr(cfg, "output_dir", None)
+        if out_dir:
+            (Path(out_dir) / "draft_raw_response.txt").write_text(text, encoding="utf-8")
         return _normalize_manuscript({"title": "Research protocol"}, references, data_summary)

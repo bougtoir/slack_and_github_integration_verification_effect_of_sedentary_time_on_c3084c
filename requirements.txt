@@ -11,3 +11,7 @@ openpyxl>=3.0.0
 perplexityai>=0.1.0
 fastapi>=0.140.0,<0.150.0
 uvicorn>=0.50.0,<0.60.0
+lxml>=4.9.0
+html5lib>=1.1
+scipy>=1.9.0
+xlrd>=2.0.1
