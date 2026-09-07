@@ -9,3 +9,5 @@ tifffile>=2022.5.4
 PyYAML>=6.0
 openpyxl>=3.0.0
 perplexityai>=0.1.0
+fastapi>=0.140.0,<0.150.0
+uvicorn>=0.50.0,<0.60.0
