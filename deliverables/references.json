@@ -1,0 +1,130 @@
+[
+  {
+    "doi": "10.1007/s10654-018-0380-1",
+    "title": "Sedentary behaviour and risk of all-cause, cardiovascular and cancer mortality, and incident type 2 diabetes: a systematic review and dose response meta-analysis",
+    "year": 2018,
+    "authors": [
+      "Richard Patterson",
+      "Eoin McNamara",
+      "Marko Tainio"
+    ],
+    "journal": "European Journal of Epidemiology",
+    "id": 1
+  },
+  {
+    "doi": "10.7326/m14-1651",
+    "title": "Sedentary Time and Its Association With Risk for Disease Incidence, Mortality, and Hospitalization in Adults",
+    "year": 2015,
+    "authors": [
+      "Aviroop Biswas",
+      "Paul I. Oh",
+      "Guy E. Faulkner"
+    ],
+    "journal": "Annals of Internal Medicine",
+    "id": 2
+  },
+  {
+    "doi": "10.1136/bjsports-2016-096327",
+    "title": "Sitting behaviour is not associated with incident diabetes over 13 years: the Whitehall II cohort study",
+    "year": 2017,
+    "authors": [
+      "Stamatakis E",
+      "Pulsford RM",
+      "Brunner EJ",
+      "Britton AR",
+      "Bauman AE",
+      "Biddle SJH",
+      "Hillsdon M"
+    ],
+    "journal": "British Journal of Sports Medicine",
+    "id": 3
+  },
+  {
+    "doi": "",
+    "title": "Physical activity, sedentary leisure-time and risk of incident type 2 diabetes: a prospective study of 512 000 Chinese adults",
+    "year": 2020,
+    "authors": [
+      "Liu X",
+      "Zhang D",
+      "Liu Y",
+      "Sun X",
+      "Han C",
+      "Wang B",
+      "Ren Y",
+      "Wang B",
+      "Shi Y",
+      "Zhou Y",
+      "et al."
+    ],
+    "journal": "Journal of Physical Activity and Health",
+    "id": 4
+  },
+  {
+    "doi": "10.1186/isrctn08434554",
+    "title": "An intervention to decrease sedentary behaviour in young adults at risk of type 2 diabetes: project STAND (sedentary time and diabetes)",
+    "year": 2012,
+    "authors": [
+      "Emma Wilmot"
+    ],
+    "journal": "http://isrctn.org/&gt;",
+    "id": 5
+  },
+  {
+    "doi": "10.26226/morressier.59d51846d462b80296ca3ab8",
+    "title": "Body fat was related with sedentary time, but not with moderate-vigorous physical activity time in type 2 diabetes",
+    "year": 2017,
+    "authors": [
+      "HAN Kyung Ah"
+    ],
+    "journal": "Unknown",
+    "id": 6
+  },
+  {
+    "doi": "10.1097/md.0000000000035901",
+    "title": "The effect of sedentary time on cardiovascular disease risk in middle-aged and elderly patients with type 2 diabetes mellitus",
+    "year": 2023,
+    "authors": [
+      "Wei Jia",
+      "Wenxia He",
+      "Qian Cui"
+    ],
+    "journal": "Medicine",
+    "id": 7
+  },
+  {
+    "doi": "10.1016/j.coemr.2019.06.013",
+    "title": "Metabolic effect of breaks in sedentary time in subjects with type 2 diabetes",
+    "year": 2019,
+    "authors": [
+      "Paolo Moghetti",
+      "Elisabetta Bacchi",
+      "Silvia Donà"
+    ],
+    "journal": "Current Opinion in Endocrine and Metabolic Research",
+    "id": 8
+  },
+  {
+    "doi": "10.1186/s12889-016-3941-9",
+    "title": "Reducing sedentary time in adults at risk of type 2 diabetes: process evaluation of the STAND (Sedentary Time ANd Diabetes) RCT",
+    "year": 2017,
+    "authors": [
+      "Stuart J. H. Biddle",
+      "Charlotte L. Edwardson",
+      "Trish Gorely"
+    ],
+    "journal": "BMC Public Health",
+    "id": 9
+  },
+  {
+    "doi": "10.1371/journal.pone.0143398",
+    "title": "A Randomised Controlled Trial to Reduce Sedentary Time in Young Adults at Risk of Type 2 Diabetes Mellitus: Project STAND (Sedentary Time ANd Diabetes)",
+    "year": 2015,
+    "authors": [
+      "Stuart J. H. Biddle",
+      "Charlotte L. Edwardson",
+      "Emma G. Wilmot"
+    ],
+    "journal": "PLOS ONE",
+    "id": 10
+  }
+]

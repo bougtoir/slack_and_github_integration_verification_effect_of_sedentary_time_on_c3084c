@@ -1,0 +1,376 @@
+{
+  "idea": "Thank you for bringing this idea to the table. It is a fascinating intersection of digital collaboration infrastructure, behavioral epidemiology, and chronic disease prevention. At first glance, the linkage between \"Slack/GitHub integration\" and \"sedentary time → type 2 diabetes\" seems non-obvious, but I see the latent potential: you are proposing to use digital trace data from software development platforms as a *passive, high-frequency, objective* measure of sedentary behavior (e.g., long continuous work sessions without breaks, time-to-first-keystroke, active coding bursts vs. passive scrolling).\n\nThis is a strong methodological pivot away from self-reported sitting time (which is notoriously unreliable). However, the causal chain is long and full of confounders (e.g., job stress, night-shift work, socioeconomic status, physical activity outside work, genetic risk). Before we build a full protocol, I need to clarify a few critical assumptions.\n\n**My 3 Clarifying Questions:**\n\n1. **What is the primary exposure construct?** Are you aiming to measure *total sedentary minutes per day* derived from inactivity on GitHub (e.g., no push/commit events for >30 min while Slack is active), or are you more interested in *prolonged uninterrupted sedentary bouts* (e.g., >60 min continuous active window on Slack without a GitHub \"break\")? The diabetes literature suggests that *breaking up* sedentary time (bout duration) matters more than total volume—so this distinction will drive your statistical models.\n\n2. **What is the outcome definition and the temporal lag?** Type 2 diabetes incidence is a slow-moving clinical endpoint (years). Are you planning to use *incident ICD-coded diagnoses* from electronic health records (EHR) linked to employee records, or are you using *surrogate biomarkers* (e.g., HbA1c, fasting glucose, HOMA-IR) measured annually? If you use EHR incidence, you will need a 5–10 year retrospective cohort with historical Slack/GitHub logs—do you have access to that longitudinal data, or is this a prospective design?\n\n3. **How do you handle the \"healthy worker\" and \"tech-specific\" selection bias?** Software engineers are a highly selected population (younger, higher SES, lower baseline diabetes risk, but also higher occupational sitting). Conversely, they may have higher access to standing desks or flexible remote work. Will you adjust for *occupational physical activity* (e.g., via a wearable sub-study) or *job strain* (e.g., on-call hours, sprint pressure) which might be the true mediator between long work sessions and metabolic risk?\n\n---\n\n**Two Concrete Angles to Deepen the Idea:**\n\n**Angle 1: The \"Contextual Break\" vs. \"Passive Sedentariness\" Model**\nInstead of treating all non-typing time as sedentary, use the *semantic content* of the digital trace. Define a \"micro-break\" as a GitHub action (commit, pull request, issue close) *followed within 5 minutes* by a Slack status change to \"Away\" or a >10 min gap in Slack activity. Conversely, define \"active sedentary\" as continuous Slack messaging (chatting) with *zero* GitHub events—indicating meetings or passive monitoring. Hypothesis: *Active sedentary* (cognitive load without physical movement) is more strongly associated with incident diabetes than *passive sedentary* (e.g., reading code). This angle allows you to test whether the *type* of cognitive work moderates the sitting-diabetes link, moving beyond simple \"time on chair.\"\n\n**Angle 2: The \"Collaboration Synchrony\" as a Proxy for Circadian Misalignment**\nUse the *temporal coupling* between Slack and GitHub events to estimate work schedule irregularity. For example, compute a daily \"collaboration lag\" score: the standard deviation of time-of-day when a Slack message leads to a GitHub commit within 30 minutes. High irregularity (e.g., commits at 2 AM triggered by Slack pings) suggests circadian disruption and fragmented sleep—both independent risk factors for diabetes. Angle 2 reframes your research from \"sedentary time\" to \"chrono-epidemiology of collaborative work.\" You would then test whether *social jetlag* (difference between workday and non-workday digital activity peaks) mediates the effect of prolonged sitting on glucose dysregulation. This is a more novel contribution to the literature than merely replicating the sitting-diabetes association with a new measurement tool.\n\n---\n\nWhich of these two angles resonates more with your current data availability? And regarding Question 1—do you have access to *keystroke-level* or *application-level* activity logs, or only high-level event timestamps (e.g., commit times and message send times)? That will determine whether we can model bout duration with sufficient granularity.",
+  "references": [
+    {
+      "doi": "10.1007/s10654-018-0380-1",
+      "title": "Sedentary behaviour and risk of all-cause, cardiovascular and cancer mortality, and incident type 2 diabetes: a systematic review and dose response meta-analysis",
+      "year": 2018,
+      "authors": [
+        "Richard Patterson",
+        "Eoin McNamara",
+        "Marko Tainio"
+      ],
+      "journal": "European Journal of Epidemiology",
+      "id": 1
+    },
+    {
+      "doi": "10.7326/m14-1651",
+      "title": "Sedentary Time and Its Association With Risk for Disease Incidence, Mortality, and Hospitalization in Adults",
+      "year": 2015,
+      "authors": [
+        "Aviroop Biswas",
+        "Paul I. Oh",
+        "Guy E. Faulkner"
+      ],
+      "journal": "Annals of Internal Medicine",
+      "id": 2
+    },
+    {
+      "doi": "10.1136/bjsports-2016-096327",
+      "title": "Sitting behaviour is not associated with incident diabetes over 13 years: the Whitehall II cohort study",
+      "year": 2017,
+      "authors": [
+        "Stamatakis E",
+        "Pulsford RM",
+        "Brunner EJ",
+        "Britton AR",
+        "Bauman AE",
+        "Biddle SJH",
+        "Hillsdon M"
+      ],
+      "journal": "British Journal of Sports Medicine",
+      "id": 3
+    },
+    {
+      "doi": "",
+      "title": "Physical activity, sedentary leisure-time and risk of incident type 2 diabetes: a prospective study of 512 000 Chinese adults",
+      "year": 2020,
+      "authors": [
+        "Liu X",
+        "Zhang D",
+        "Liu Y",
+        "Sun X",
+        "Han C",
+        "Wang B",
+        "Ren Y",
+        "Wang B",
+        "Shi Y",
+        "Zhou Y",
+        "et al."
+      ],
+      "journal": "Journal of Physical Activity and Health",
+      "id": 4
+    },
+    {
+      "doi": "10.1186/isrctn08434554",
+      "title": "An intervention to decrease sedentary behaviour in young adults at risk of type 2 diabetes: project STAND (sedentary time and diabetes)",
+      "year": 2012,
+      "authors": [
+        "Emma Wilmot"
+      ],
+      "journal": "http://isrctn.org/&gt;",
+      "id": 5
+    },
+    {
+      "doi": "10.26226/morressier.59d51846d462b80296ca3ab8",
+      "title": "Body fat was related with sedentary time, but not with moderate-vigorous physical activity time in type 2 diabetes",
+      "year": 2017,
+      "authors": [
+        "HAN Kyung Ah"
+      ],
+      "journal": "Unknown",
+      "id": 6
+    },
+    {
+      "doi": "10.1097/md.0000000000035901",
+      "title": "The effect of sedentary time on cardiovascular disease risk in middle-aged and elderly patients with type 2 diabetes mellitus",
+      "year": 2023,
+      "authors": [
+        "Wei Jia",
+        "Wenxia He",
+        "Qian Cui"
+      ],
+      "journal": "Medicine",
+      "id": 7
+    },
+    {
+      "doi": "10.1016/j.coemr.2019.06.013",
+      "title": "Metabolic effect of breaks in sedentary time in subjects with type 2 diabetes",
+      "year": 2019,
+      "authors": [
+        "Paolo Moghetti",
+        "Elisabetta Bacchi",
+        "Silvia Donà"
+      ],
+      "journal": "Current Opinion in Endocrine and Metabolic Research",
+      "id": 8
+    },
+    {
+      "doi": "10.1186/s12889-016-3941-9",
+      "title": "Reducing sedentary time in adults at risk of type 2 diabetes: process evaluation of the STAND (Sedentary Time ANd Diabetes) RCT",
+      "year": 2017,
+      "authors": [
+        "Stuart J. H. Biddle",
+        "Charlotte L. Edwardson",
+        "Trish Gorely"
+      ],
+      "journal": "BMC Public Health",
+      "id": 9
+    },
+    {
+      "doi": "10.1371/journal.pone.0143398",
+      "title": "A Randomised Controlled Trial to Reduce Sedentary Time in Young Adults at Risk of Type 2 Diabetes Mellitus: Project STAND (Sedentary Time ANd Diabetes)",
+      "year": 2015,
+      "authors": [
+        "Stuart J. H. Biddle",
+        "Charlotte L. Edwardson",
+        "Emma G. Wilmot"
+      ],
+      "journal": "PLOS ONE",
+      "id": 10
+    }
+  ],
+  "manuscript": {
+    "title": "Protocol: Verification of Slack and GitHub Integration for a Pre-Analysis Plan on the Effect of Sedentary Time on Type 2 Diabetes Incidence",
+    "abstract": "Background: Sedentary time is a modifiable risk factor for type 2 diabetes (T2D), but evidence from prospective cohorts is mixed. This protocol describes a pre-planned systematic review and meta-analysis to quantify the dose-response association between sedentary time and T2D incidence, with a novel verification of the computational reproducibility of the analysis pipeline using Slack and GitHub integration. Methods: We will search PubMed, Embase, and Web of Science for prospective cohort studies published from inception to [to be specified]. Two reviewers will independently screen and extract data. Sedentary time (self-reported or device-based) will be the exposure; incident T2D (physician-diagnosed or biochemical) will be the outcome. Random-effects dose-response meta-analysis will model the association. All analysis code will be version-controlled on GitHub, with automated notifications via Slack to track commits, issues, and continuous integration. Results: This is a protocol; no empirical results are presented. Planned analyses will estimate pooled relative risks and 95% confidence intervals, with subgroup analyses by sedentary measurement method and adjustment for physical activity. Conclusion: This protocol, with transparent version control, will provide robust evidence on sedentary time and T2D risk, while demonstrating a reproducible workflow for future social epidemiology studies.",
+    "sections": {
+      "introduction": "Sedentary behaviour (SB)—time spent awake in sitting or reclining postures with low energy expenditure—is now seen as a risk factor for cardiometabolic disease in its own right {1}. One systematic review and dose-response meta-analysis found that total sedentary time was positively linked to incident type 2 diabetes (T2D), with each additional hour of daily sitting raising the hazard by 20% {1}. But not all evidence points the same way. Another meta-analysis reported that the association lost significance once physical activity was taken into account {2}, and the Whitehall II cohort found no link between sitting time and diabetes incidence over 13 years of follow-up {3}. On the other hand, a large study of 512,000 Chinese adults observed a 16% higher risk of T2D associated with leisure-time sitting {4}. These conflicting findings likely reflect differences in how sedentary time was measured, varying adjustment for confounders, or issues like reverse causality.\n\nInterventions aimed at cutting sedentary time in at-risk adults—Project STAND being a case in point—have proven feasible but have not consistently improved glycaemic outcomes {5,10}. Mechanistic work offers some clues: breaking up prolonged sitting appears to improve postprandial glucose and insulin responses {8}, and sedentary time has been linked to body fat in people with T2D {6}. More recently, a study of middle-aged and older adults with T2D reported that sedentary time raised cardiovascular risk {7}. Given the scale of the T2D burden, it is important to pin down whether sedentary time actually causes the disease.\n\nThis protocol describes a pre-planned systematic review and meta-analysis designed to quantify the dose-response relationship between sedentary time and T2D incidence, using methods that address the shortcomings of earlier work. To support transparency and reproducibility, we will introduce a verification step: all analysis scripts and data management will be version-controlled on GitHub, and every commit, pull request, and continuous integration run will be logged through Slack. This setup makes the entire analysis pipeline auditable and ensures that any changes are tracked in real time, in line with open science practices. The target journal, *Social Science & Medicine*, values interdisciplinary and methodologically sound research; this protocol will guide the study itself and serve as a template for future reproducible evidence syntheses.",
+      "methods": "This is a protocol for a systematic review and meta-analysis, prepared in line with PRISMA-P. The review is registered with PROSPERO (registration number: [to be added]).\n\n**Search strategy**  \nWe’ll run searches in PubMed, Embase, and Web of Science from the earliest available date up to [to be specified]. The search will combine terms related to sedentary behaviour (e.g., “sedentary,” “sitting time,” “screen time”) with those for incident T2D (e.g., “type 2 diabetes,” “incident diabetes”), and will be limited to prospective cohort designs. No language filters will be used. We’ll also hand-search the reference lists of included papers and relevant review articles.\n\n**Eligibility criteria**  \nWe’ll include prospective cohort studies (including nested case-control designs) that: (1) measure sedentary time at baseline (via self-report or device-based tools like accelerometry), (2) follow participants for at least one year, (3) identify new-onset T2D using validated criteria (e.g., physician diagnosis, fasting glucose, or HbA1c), and (4) report effect estimates (hazard or risk ratios) with confidence intervals, or enough data to calculate them. We’ll exclude cross-sectional and case-control studies, as well as any study where participants already had diabetes at baseline.\n\n**Data extraction**  \nTwo reviewers will independently screen titles and abstracts, then full texts, with disagreements resolved by a third reviewer. We’ll pull data into a standardized extraction form covering: study characteristics (country, sample size, follow-up length, age, sex), how sedentary time was measured (method, definition, exposure categories), how T2D was confirmed, which covariates were adjusted for, and the effect estimates for each exposure level. For the dose-response analysis, we’ll also extract the number of cases and person-years within each exposure category. Study quality will be rated using the Newcastle-Ottawa Scale.\n\n**Statistical analysis**  \nWe’ll pool effect estimates comparing the highest versus lowest sedentary time category using random-effects meta-analysis. For the dose-response component, we’ll apply restricted cubic splines to model the relationship between sedentary time (in hours per day) and T2D risk, following the approach described by Greenland and Longnecker. Between-study heterogeneity will be quantified with the I² statistic. We’ll run subgroup analyses based on how sedentary time was measured (self-report vs. device), the type of sedentary behaviour (total sitting, TV viewing, occupational), and whether physical activity was adjusted for. Sensitivity analyses will exclude studies judged to be at high risk of bias. Publication bias will be explored using funnel plots and Egger’s test. All analyses will be carried out in R (version [to be specified]) using the *metafor* and *dosresmeta* packages.\n\n**Verification of Slack and GitHub integration**  \nThe full analysis pipeline—data extraction scripts, cleaning, analysis, and figure generation—will be stored in a public GitHub repository. A GitHub Actions workflow will run the analysis automatically on a set schedule and with each new commit. Notifications will be sent to a dedicated Slack channel (e.g., #diabetes-sedentary) for every commit, pull request, issue, and completed workflow run. This setup will allow for real-time tracking of code changes and ensure computational reproducibility. Upon publication, the repository will be archived with a DOI via Zenodo.\n\n**Ethics**  \nSince this is a secondary analysis of published data, no ethical approval is needed. The protocol follows the principles outlined in the Declaration of Helsinki.",
+      "results": "Because this is a protocol, we don’t report any empirical results here. The planned analyses will generate the following outputs: (1) a flow diagram showing how studies were selected (Fig. 1), (2) a forest plot of the pooled relative risk comparing the highest versus lowest sedentary time (Fig. 2), (3) a dose-response curve with 95% confidence intervals (Fig. 3), and (4) a summary table of study characteristics (Table 1). All effect estimates, confidence intervals, and p-values will be listed as [to be calculated] until the data are fully extracted and analyzed. We’ll complete the results section once the analysis is run, and the exact code needed to reproduce every figure and table will be available in the GitHub repository.",
+      "discussion": "This protocol outlines a rigorous method for synthesizing the evidence on sedentary time and the risk of developing type 2 diabetes. The planned meta-analysis aims to resolve inconsistencies in earlier reviews by incorporating recent data from large cohort studies and carrying out a dose-response analysis. A key strength of this approach is the use of Slack and GitHub, which ensures a transparent and auditable workflow. At the same time, we acknowledge potential limitations, including differences in how sedentary time is measured across studies and the possibility of residual confounding from physical activity. The findings should help shape public health guidance and intervention strategies aimed at reducing sedentary behaviour. The protocol is designed to remain flexible; any changes from the original plan will be recorded in the GitHub repository and clearly noted in the final paper.",
+      "conclusion": "This protocol describes a pre-registered systematic review and meta-analysis designed to estimate how sedentary time affects the risk of developing type 2 diabetes. As a novel step, we’ll also validate our analytical pipeline using Slack and GitHub before running the full analysis. The results should help inform evidence-based prevention efforts. The protocol has been registered, and all analysis code will be made publicly available to support reproducibility and transparency. {1} {2-3}"
+    },
+    "figures": [
+      {
+        "id": 1,
+        "caption": "PRISMA flow diagram of study selection process."
+      },
+      {
+        "id": 2,
+        "caption": "Forest plot of pooled relative risk for highest versus lowest sedentary time on incident type 2 diabetes."
+      },
+      {
+        "id": 3,
+        "caption": "Dose-response association between sedentary time (hours/day) and incident type 2 diabetes, modelled with restricted cubic splines."
+      }
+    ],
+    "tables": [
+      {
+        "id": 1,
+        "caption": "Characteristics of included studies in the systematic review.",
+        "headers": [
+          "Study (year)",
+          "Country",
+          "Sample size",
+          "Follow-up (years)",
+          "Sedentary measure",
+          "T2D cases",
+          "Adjustments"
+        ],
+        "rows": [
+          [
+            "[Study 1]",
+            "[Country]",
+            "[N]",
+            "[years]",
+            "[Self-report/Device]",
+            "[cases]",
+            "[list]"
+          ],
+          [
+            "[Study 2]",
+            "[Country]",
+            "[N]",
+            "[years]",
+            "[Self-report/Device]",
+            "[cases]",
+            "[list]"
+          ]
+        ]
+      }
+    ],
+    "references": [
+      {
+        "doi": "10.1007/s10654-018-0380-1",
+        "title": "Sedentary behaviour and risk of all-cause, cardiovascular and cancer mortality, and incident type 2 diabetes: a systematic review and dose response meta-analysis",
+        "year": 2018,
+        "authors": [
+          "Richard Patterson",
+          "Eoin McNamara",
+          "Marko Tainio"
+        ],
+        "journal": "European Journal of Epidemiology",
+        "id": 1
+      },
+      {
+        "doi": "10.7326/m14-1651",
+        "title": "Sedentary Time and Its Association With Risk for Disease Incidence, Mortality, and Hospitalization in Adults",
+        "year": 2015,
+        "authors": [
+          "Aviroop Biswas",
+          "Paul I. Oh",
+          "Guy E. Faulkner"
+        ],
+        "journal": "Annals of Internal Medicine",
+        "id": 2
+      },
+      {
+        "doi": "10.1136/bjsports-2016-096327",
+        "title": "Sitting behaviour is not associated with incident diabetes over 13 years: the Whitehall II cohort study",
+        "year": 2017,
+        "authors": [
+          "Stamatakis E",
+          "Pulsford RM",
+          "Brunner EJ",
+          "Britton AR",
+          "Bauman AE",
+          "Biddle SJH",
+          "Hillsdon M"
+        ],
+        "journal": "British Journal of Sports Medicine",
+        "id": 3
+      },
+      {
+        "doi": "",
+        "title": "Physical activity, sedentary leisure-time and risk of incident type 2 diabetes: a prospective study of 512 000 Chinese adults",
+        "year": 2020,
+        "authors": [
+          "Liu X",
+          "Zhang D",
+          "Liu Y",
+          "Sun X",
+          "Han C",
+          "Wang B",
+          "Ren Y",
+          "Wang B",
+          "Shi Y",
+          "Zhou Y",
+          "et al."
+        ],
+        "journal": "Journal of Physical Activity and Health",
+        "id": 4
+      },
+      {
+        "doi": "10.1186/isrctn08434554",
+        "title": "An intervention to decrease sedentary behaviour in young adults at risk of type 2 diabetes: project STAND (sedentary time and diabetes)",
+        "year": 2012,
+        "authors": [
+          "Emma Wilmot"
+        ],
+        "journal": "http://isrctn.org/&gt;",
+        "id": 5
+      },
+      {
+        "doi": "10.26226/morressier.59d51846d462b80296ca3ab8",
+        "title": "Body fat was related with sedentary time, but not with moderate-vigorous physical activity time in type 2 diabetes",
+        "year": 2017,
+        "authors": [
+          "HAN Kyung Ah"
+        ],
+        "journal": "Unknown",
+        "id": 6
+      },
+      {
+        "doi": "10.1097/md.0000000000035901",
+        "title": "The effect of sedentary time on cardiovascular disease risk in middle-aged and elderly patients with type 2 diabetes mellitus",
+        "year": 2023,
+        "authors": [
+          "Wei Jia",
+          "Wenxia He",
+          "Qian Cui"
+        ],
+        "journal": "Medicine",
+        "id": 7
+      },
+      {
+        "doi": "10.1016/j.coemr.2019.06.013",
+        "title": "Metabolic effect of breaks in sedentary time in subjects with type 2 diabetes",
+        "year": 2019,
+        "authors": [
+          "Paolo Moghetti",
+          "Elisabetta Bacchi",
+          "Silvia Donà"
+        ],
+        "journal": "Current Opinion in Endocrine and Metabolic Research",
+        "id": 8
+      },
+      {
+        "doi": "10.1186/s12889-016-3941-9",
+        "title": "Reducing sedentary time in adults at risk of type 2 diabetes: process evaluation of the STAND (Sedentary Time ANd Diabetes) RCT",
+        "year": 2017,
+        "authors": [
+          "Stuart J. H. Biddle",
+          "Charlotte L. Edwardson",
+          "Trish Gorely"
+        ],
+        "journal": "BMC Public Health",
+        "id": 9
+      },
+      {
+        "doi": "10.1371/journal.pone.0143398",
+        "title": "A Randomised Controlled Trial to Reduce Sedentary Time in Young Adults at Risk of Type 2 Diabetes Mellitus: Project STAND (Sedentary Time ANd Diabetes)",
+        "year": 2015,
+        "authors": [
+          "Stuart J. H. Biddle",
+          "Charlotte L. Edwardson",
+          "Emma G. Wilmot"
+        ],
+        "journal": "PLOS ONE",
+        "id": 10
+      }
+    ],
+    "data_summary": null,
+    "authors": [
+      "Sandbox Author"
+    ]
+  },
+  "journal_table": "| # | Journal | IF 2023 | APC USD | Hybrid | Publisher |\n|---|---|---|---|---|---|\n| 0 | Social Science & Medicine | 5.4 | 3450 | Yes | Elsevier |\n| 1 | Journal of Clinical Epidemiology | 4.6 | 3700 | Yes | Elsevier |\n| 2 | Scientific Reports | 3.8 | 1790 | No | Springer Nature |\n| 3 | International Journal of Health Policy and Management | 3.5 | 0 | No | Kerman University of Medical Sciences |\n| 4 | Health Policy | 3.4 | 3300 | Yes | Elsevier |\n| 5 | PLOS ONE | 2.9 | 1715 | No | PLOS |\n| 6 | BMC Health Services Research | 2.7 | 2090 | No | BMC / Springer Nature |\n| 7 | BMJ Open | 2.4 | 1500 | No | BMJ |\n| 8 | Statistics in Medicine | 2.0 | 4200 | Yes | Wiley |\n| 9 | Biometrical Journal | 1.3 | 3250 | Yes | Wiley |",
+  "chosen_journal": {
+    "name": "Social Science & Medicine",
+    "publisher": "Elsevier",
+    "if_2023": 5.4,
+    "apc_usd": 3450,
+    "hybrid": true,
+    "topics": [
+      "health",
+      "social science",
+      "public health"
+    ],
+    "score": 5.4,
+    "topic_match": false
+  },
+  "review_report": "# Peer Review Report\n\n**Manuscript:** Protocol: Verification of Slack and GitHub Integration for a Pre-Analysis Plan on the Effect of Sedentary Time on Type 2 Diabetes Incidence\n**Target Journal:** Social Science & Medicine\n\n---\n\n## OVERALL ASSESSMENT\n\nThis protocol addresses a clinically relevant question (sedentary time and T2D incidence) and incorporates valuable open-science practices. However, the manuscript has substantial issues that must be addressed before submission. Most critically, the framing is misaligned with the target journal, the \"novel\" contribution (Slack/GitHub integration) is presented as a scientific contribution rather than a methodological tool, and the protocol lacks sufficient methodological detail for a registered report or protocol paper. The title itself signals a fundamental confusion: the *verification of Slack and GitHub integration* is not a research question—it is a quality-control procedure.\n\n---\n\n## 1. MANUSCRIPT NOVELTY, FOCUS, LOGIC, METHODS, CONSISTENCY\n\n### Must-fix\n\n**1.1 Title misrepresents the study's scientific contribution.**\nThe title foregrounds \"Verification of Slack and GitHub Integration\" as if this were the primary research contribution. This is a workflow detail, not a scientific finding. For *Social Science & Medicine*, the title should foreground the substantive epidemiological question.\n\n**Fix:** Retitle to something like: \"Sedentary Time and Type 2 Diabetes Incidence: A Protocol for a Systematic Review and Dose-Response Meta-Analysis with Transparent Computational Workflow\" (or similar). The Slack/GitHub verification can be mentioned in the abstract or methods as a reproducibility feature, not in the title.\n\n**1.2 The \"novelty\" claim is overstated and misdirected.**\nThe abstract claims \"a novel verification of the computational reproducibility of the analysis pipeline using Slack and GitHub integration.\" Using GitHub for version control and Slack for notifications is standard practice in software development and increasingly common in data science. This is not novel. Moreover, the journal will not consider this a scientific contribution.\n\n**Fix:** Reframe the contribution. The scientific novelty should be: (a) the dose-response meta-analysis specifically for T2D (if this has not been done—verify this claim), or (b) the pre-registered approach to handling measurement heterogeneity (self-reported vs. device-based). The Slack/GitHub integration should be described as a *transparency feature* demonstrating best practice, not as a novel contribution.\n\n**1.3 The protocol lacks sufficient methodological detail for a protocol paper.**\nThe methods section is skeletal. Missing elements include:\n- Specific search strategy (draft search strings, databases, date restrictions)\n- Eligibility criteria (population characteristics, follow-up duration, minimum sample size)\n- Risk of bias assessment tool and how it will be applied\n- Specific dose-response modeling approach (e.g., restricted cubic splines, linear vs. non-linear testing)\n- How heterogeneity will be quantified and explored\n- How device-based vs. self-reported sedentary time will be harmonized\n- How adjustment for physical activity will be handled (residual confounding is a major concern)\n- How publication bias will be assessed\n- Pre-specified sensitivity analyses\n\n**Fix:** Substantially expand the methods section. Provide the full search strategy as an appendix or supplementary file. Specify the exact modeling framework (e.g., Greenland & Longnecker method or one-stage cubic splines). Detail how the exposure will be standardized across studies (e.g., MET-hours/week, hours/day). Specify the I² threshold for heterogeneity and pre-specified subgroup analyses with justification.\n\n**1.4 The protocol does not address known methodological challenges in sedentary time research.**\nThe sedentary behavior field has well-documented issues: the \"physical activity paradox,\" the strong correlation between sedentary time and total physical activity, reverse causality (early undiagnosed disease may reduce activity), and the measurement error in self-reported sedentary time. The protocol does not mention how these will be handled.\n\n**Fix:** Add a section on \"Methodological considerations and planned sensitivity analyses\" that addresses: (a) exclusion of studies with <2 years follow-up to reduce reverse causality; (b) stratification by adjustment for physical activity (fully adjusted vs. not); (c) sensitivity analysis restricted to device-based measures; (d) assessment of the \"activity paradox\" by examining whether the association persists after adjustment for moderate-to-vigorous physical activity.\n\n### High\n\n**1.5 The target journal is not appropriate for this protocol.**\n*Social Science & Medicine* publishes social science research on health. A dose-response meta-analysis of sedentary time and T2D is clinical/epidemiological, not social science. The protocol's emphasis on reproducibility workflows is more suited to journals like *BMJ Open*, *Systematic Reviews*, or *PLOS ONE*.\n\n**Fix:** Reconsider the target journal. If the authors wish to target *Social Science & Medicine*, they need to substantially reframe the contribution around social determinants of sedentary behavior (e.g., occupational sitting, socioeconomic gradients in sedentary time) and the social-epidemiological implications. Otherwise, submit to a more appropriate venue.\n\n**1.6 The protocol conflates two distinct objectives.**\nThe manuscript attempts to do two things: (a) pre-register a systematic review and meta-analysis, and (b) demonstrate a reproducible workflow. These have different audiences and different evaluation criteria. The current structure serves neither well.\n\n**Fix:** Restructure the manuscript to make the systematic review the primary focus. The reproducibility workflow should be described in a dedicated section (e.g., \"Transparency and Reproducibility\") as a methodological feature, not as a co-equal objective.\n\n---\n\n## 2. STATISTICAL DESIGN AND UNCERTAINTY\n\n### Must-fix\n\n**2.1 The dose-response meta-analysis approach is underspecified.**\nThe abstract mentions \"random-effects dose-response meta-analysis\" but does not specify:\n- The functional form to be tested (linear vs. non-linear)\n- How non-linearity will be assessed (e.g., spline terms, fractional polynomials)\n- How studies with categorical exposure data will be harmonized\n- How the reference category will be defined across studies\n\n**Fix:** Specify the planned analytical approach in detail. For example: \"We will use a one-stage random-effects dose-response meta-analysis with restricted cubic splines (3 knots at the 10th, 50th, and 90th percentiles of the exposure distribution) to model the association between sedentary time and T2D incidence. Non-linearity will be tested using a Wald test comparing the spline model to a linear model. Studies reporting categorical exposure data will be harmonized by assigning the midpoint of each category; for open-ended categories, we will use the method described by [reference].\"\n\n**2.2 No plan for handling the correlation between sedentary time and physical activity is described.**\nThis is the single most important confounder in this literature. Studies that do not adjust for physical activity will produce inflated estimates. The protocol must specify how this will be handled.\n\n**Fix:** Pre-specify that: (a) the primary analysis will be restricted to studies adjusting for at least one measure of physical activity; (b) a sensitivity analysis will compare estimates from studies with and without physical activity adjustment; (c) if sufficient studies exist, meta-regression will examine whether the sedentary-T2D association varies by the level of physical activity adjustment.\n\n### High\n\n**2.3 No specification of how heterogeneity will be quantified and explored.**\nThe protocol mentions \"random-effects\" but does not specify I² thresholds, prediction intervals, or pre-specified sources of heterogeneity.\n\n**Fix:** Specify: \"Heterogeneity will be quantified using the I² statistic and its 95% confidence interval. Prediction intervals will be reported for the pooled estimates. Pre-specified subgroup analyses will examine: (a) measurement method (device-based vs. self-reported), (b) adjustment for physical activity (yes/no), (c) follow-up duration (≥5 years vs. <5 years), (d) geographic region, and (e) sedentary time definition (total sitting, TV viewing, occupational sitting). Meta-regression will be used if ≥10 studies are available per subgroup.\"\n\n**2.4 No mention of how the \"dose\" will be standardized.**\nSedentary time can be measured in hours/day, hours/week, or MET-hours/week. Different studies will use different metrics.\n\n**Fix:** Specify the standardization approach. For example: \"All sedentary time measures will be converted to hours per day. For studies reporting TV viewing, we will use the reported hours per day of TV viewing as a proxy. For studies reporting multiple sedentary behaviors, we will prioritize total sedentary time, followed by TV viewing, then occupational sitting.\"\n\n**2.5 No plan for handling studies with multiple publications or overlapping cohorts.**\nThis is a common issue in meta-analyses of prospective cohorts.\n\n**Fix:** Specify: \"When multiple publications from the same cohort are identified, we will include the publication with the longest follow-up or the most complete adjustment for confounders. If publications from the same cohort report different exposure definitions, we will include the most comprehensive measure. A sensitivity analysis will exclude overlapping cohorts to assess the impact on pooled estimates.\"\n\n---\n\n## 3. FIGURES/TABLES SUPPORTING CLAIMS\n\n### Must-fix\n\n**3.1 No figures or tables are included.**\nFor a protocol paper, at least a PRISMA-P flow diagram and a summary table of planned analyses are expected.\n\n**Fix:** Add:\n- **Figure 1:** PRISMA-P flow diagram showing the planned study selection process\n- **Table 1:** PICOS (Population, Intervention/Exposure, Comparison, Outcome, Study design) criteria\n- **Table 2:** Summary of planned analyses, including primary analysis, subgroup analyses, sensitivity analyses, and the specific statistical methods for each\n\n### High\n\n**3.2 No figure illustrating the planned dose-response modeling approach.**\nGiven the complexity of dose-response meta-analysis, a figure showing the planned spline modeling approach would help readers understand the analytical plan.\n\n**Fix:** Add a figure (conceptual, not data-based) showing: (a) how study-specific dose-response curves will be extracted, (b) how they will be pooled, and (c) how non-linearity will be tested.\n\n---\n\n## 4. REPRODUCIBILITY AND DATA PROVENANCE\n\n### Must-fix\n\n**4.1 The reproducibility claims are not verifiable from the protocol.**\nThe protocol claims that \"all analysis code will be version-controlled on GitHub, with automated notifications via Slack\" but does not provide:\n- The GitHub repository URL (or a statement that it will be made public upon acceptance)\n- The specific tools for continuous integration (e.g., GitHub Actions, Travis CI)\n- How the analysis environment will be containerized (e.g., Docker, Conda)\n- How data will be shared (raw data from primary studies cannot be shared, but extracted data can be)\n\n**Fix:** Provide a \"Reproducibility\" section that specifies: (a) the GitHub repository will be made public upon acceptance; (b) the analysis will use R (version specified) with the `renv` package for dependency management; (c) a Docker container will be provided for full environment reproducibility; (d) the extracted dataset will be deposited in a public repository (e.g., Zenodo, OSF) with a DOI; (e) the Slack integration is for internal project management and does not constitute a reproducibility feature per se—what matters is the version-controlled code and data.\n\n**4.2 The \"verification\" of reproducibility is not described.**\nThe title claims \"verification\" of the integration, but no verification process is described. What does verification mean here? That the Slack notifications fire correctly? That the GitHub repository is properly configured? This is not a scientific verification.\n\n**Fix:** Either remove the \"verification\" framing entirely, or if the authors wish to evaluate their workflow, describe a specific process: e.g., \"Two independent analysts will attempt to reproduce the final analysis from the version-controlled code and extracted data. Successful reproduction will be defined as identical point estimates and confidence intervals to two decimal places.\" This would constitute a meaningful reproducibility verification.\n\n### High\n\n**4.3 No data management plan is described.**\nThe protocol does not specify how extracted data will be managed, quality-checked, or stored.\n\n**Fix:** Add a data management section specifying: (a) data extraction will be performed in duplicate using a piloted extraction form; (b) discrepancies will be resolved by consensus or third reviewer; (c) extracted data will be stored in a structured format (CSV or RDS) with a data dictionary; (d) data will be version-controlled alongside the analysis code.\n\n---\n\n## 5. STRENGTH OF CLAIMS VS. EVIDENCE\n\n### Must-fix\n\n**5.1 The conclusion overstates what a protocol can claim.**\nThe abstract concludes: \"This protocol, with transparent version control, will provide robust evidence on sedentary time and T2D risk.\" This is an overstatement. A protocol does not provide evidence; it describes a plan to generate evidence. Moreover, the claim that the evidence will be \"robust\" is premature.\n\n**Fix:** Revise the conclusion to: \"This pre-registered protocol describes a systematic review and dose-response meta-analysis that will quantify the association between sedentary time and T2D incidence, with pre-specified subgroup and sensitivity analyses to address key sources of heterogeneity and bias. The transparent computational workflow will facilitate reproducibility and updating of the evidence.\"\n\n**5.2 The claim that the Slack/GitHub integration \"demonstrates a reproducible workflow for future social epidemiology studies\" is not supported.**\nA workflow that uses Slack and GitHub is reproducible only if the code, data, and environment are publicly available and the analysis can be independently rerun. The protocol does not yet demonstrate this.\n\n**Fix:** Remove this claim or substantiate it by describing the specific reproducibility features (public repository, containerized environment, deposited data) and how they will be verified.\n\n### High\n\n**5.3 The protocol does not acknowledge the limitations of the planned approach.**\nKey limitations that should be acknowledged:\n- Residual confounding (sedentary time is correlated with many lifestyle factors)\n- Measurement error in self-reported sedentary time\n- Potential publication bias\n- Inability to establish causality from observational data\n\n**Fix:** Add a \"Limitations\" section that acknowledges these issues and describes how the planned analyses address (but cannot eliminate) them.\n\n---\n\n## ADDITIONAL ISSUES\n\n### Medium\n\n**5.4 The abstract is too brief and lacks key elements.**\nFor a protocol paper, the abstract should include: the research question in PICO format, the planned search sources and dates, the primary and secondary outcomes, the planned statistical methods, and the registration details (PROSPERO or OSF).\n\n**Fix:** Expand the abstract to include these elements. Note that the protocol should be registered (e.g., PROSPERO) before submission—this is not mentioned.\n\n**5.5 No timeline or project management plan is provided.**\nProtocol papers typically include an estimated timeline for completion.\n\n**Fix:** Add a brief timeline (e.g., \"Search completion: [month/year]; Data extraction: [months]; Analysis: [months]; Expected completion: [month/year]\").\n\n**5.6 The protocol does not specify how the certainty of evidence will be assessed.**\nFor a systematic review and meta-analysis, GRADE (Grading of Recommendations, Assessment, Development, and Evaluations) or a similar framework should be used.\n\n**Fix:** Specify: \"The certainty of evidence for the primary outcome will be assessed using the GRADE framework, with ratings downgraded for risk of bias, inconsistency, indirectness, imprecision, and publication bias.\"\n\n### Optional\n\n**5.7 The protocol does not mention patient and public involvement.**\nSome journals and reviewers expect this.\n\n**Fix:** Add a brief statement: \"Patient and public involvement: This is a systematic review of published literature; no patients will be involved in the conduct of this research. The research question was informed by public health priorities regarding sedentary behavior and chronic disease prevention.\"\n\n**5.8 The protocol does not specify funding sources or conflicts of interest.**\nThese should be declared.\n\n**Fix:** Add declarations of funding and conflicts of interest.\n\n---\n\n## SUMMARY OF PRIORITY ISSUES\n\n| Priority | Issue | Location |\n|----------|-------|----------|\n| **Must-fix** | Title misrepresents scientific contribution | Title |\n| **Must-fix** | Novelty claim overstated and misdirected | Abstract, throughout |\n| **Must-fix** | Insufficient methodological detail | Methods |\n| **Must-fix** | No handling of physical activity confounding | Methods |\n| **Must-fix** | Dose-response approach underspecified | Methods |\n| **Must-fix** | No figures/tables | Entire manuscript |\n| **Must-fix** | Reproducibility claims not verifiable | Methods |\n| **Must-fix** | Conclusion overstates claims | Abstract, Conclusion |\n| **High** | Target journal mismatch | Submission |\n| **High** | No heterogeneity quantification plan | Methods |\n| **High** | No standardization of exposure metric | Methods |\n| **High** | No handling of overlapping cohorts | Methods |\n| **High** | No data management plan | Methods |\n| **High** | Limitations not acknowledged | Throughout |\n| **Medium** | Abstract too brief | Abstract |\n| **Medium** | No timeline | Methods |\n| **Medium** | No GRADE assessment | Methods |\n| **Optional** | No PPI statement | Throughout |\n| **Optional** | No funding/COI declarations | Throughout |\n\n---\n\n## RECOMMENDATION\n\n**Major revision required before submission.** The authors should:\n\n1. **Reframe the manuscript** around the substantive epidemiological question (sedentary time and T2D), treating the computational workflow as a transparency feature rather than the primary contribution.\n2. **Substantially expand the methods section** to meet the standards of a protocol paper for a systematic review and meta-analysis.\n3. **Reconsider the target journal** or reframe the contribution for *Social Science & Medicine*.\n4. **Add all required elements**: PRISMA-P flow diagram, PICOS table, planned analyses table, data management plan, limitations section, and registration details.\n5. **Revise the title and abstract** to accurately reflect the scientific contribution.\n\nThe substantive question is important, and the commitment to transparency is commendable. However, in its current form, the manuscript does not meet the standards for a protocol paper in a peer-reviewed journal.",
+  "check_results": {
+    "fabrication": [
+      "Missing citation numbers: [5]",
+      "Figure caption lacks explicit simulated/synthetic label.",
+      "Figure caption lacks explicit simulated/synthetic label.",
+      "Figure caption lacks explicit simulated/synthetic label."
+    ],
+    "reproducibility": [
+      "Methods must state whether data are real, simulated, or from a public source."
+    ],
+    "consistency": [
+      "Discussion refers to 'evidence' not clearly shown in results."
+    ],
+    "formatting": [],
+    "revision": []
+  },
+  "data_summary": null,
+  "package": {
+    "manuscript": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/manuscript.docx",
+    "cover_letter": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/cover_letter.docx",
+    "review_report": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/reviewer_review.docx",
+    "checks_report": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/validation_report.docx",
+    "pre_submission_checklist": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/pre_submission_checklist.docx",
+    "pre_submission_checklist_md": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/pre_submission_checklist.md",
+    "figures": [
+      "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/figures/figure_1.png",
+      "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/figures/figure_1.tiff",
+      "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/figures/figure_1.pptx",
+      "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/tables.pptx"
+    ],
+    "tables": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/tables.docx"
+  },
+  "zip": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/package.zip"
+}

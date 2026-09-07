@@ -1,0 +1,16 @@
+services:
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: paper-sandbox
+    user: "1000:1000"
+    volumes:
+      - .:/app
+      - ./workspace:/app/workspace
+      - ./data:/app/data
+      - ./examples:/app/examples
+    env_file:
+      - .env
+    working_dir: /app
+    command: ["tail", "-f", "/dev/null"]

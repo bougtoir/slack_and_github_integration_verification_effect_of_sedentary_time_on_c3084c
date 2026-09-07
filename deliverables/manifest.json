@@ -1,0 +1,15 @@
+{
+  "manuscript": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/manuscript.docx",
+  "cover_letter": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/cover_letter.docx",
+  "review_report": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/reviewer_review.docx",
+  "checks_report": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/validation_report.docx",
+  "pre_submission_checklist": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/pre_submission_checklist.docx",
+  "pre_submission_checklist_md": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/pre_submission_checklist.md",
+  "figures": [
+    "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/figures/figure_1.png",
+    "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/figures/figure_1.tiff",
+    "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/figures/figure_1.pptx",
+    "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/tables.pptx"
+  ],
+  "tables": "/app/workspace/sessions/3c4fef6231c9385a649abcd421a1aaad/output/tables.docx"
+}

@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paper Sandbox</title>
+  <style>
+    :root {
+      font-size: clamp(16px, 1.8vw, 20px);
+      --primary: #0d6efd;
+      --bg: #f8f9fa;
+      --card: #ffffff;
+      --border: #dee2e6;
+      --text: #212529;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+    }
+    h1 { font-size: clamp(1.4rem, 3vw, 2rem); margin: 0.5rem 0; }
+    h2 { font-size: clamp(1.1rem, 2.2vw, 1.4rem); margin: 1rem 0 0.5rem; }
+    p, label, input, button, select, textarea, a, span, td, th { font-size: 1rem; }
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 1rem;
+    }
+    .tab {
+      padding: 0.6rem 1.2rem;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      font-weight: 600;
+      color: #555;
+    }
+    .tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .small { color: #666; margin: 0.2rem 0 0.6rem; }
+    #chat {
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 0.8rem;
+      min-height: 12rem;
+      max-height: clamp(12rem, 40vh, 28rem);
+      overflow-y: auto;
+      background: #fafafa;
+      margin-bottom: 1rem;
+    }
+    .message {
+      margin: 0.4rem 0;
+      padding: 0.5rem 0.7rem;
+      border-radius: 0.4rem;
+      max-width: 96%;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .user { background: #d1e7dd; margin-left: auto; text-align: right; }
+    .assistant { background: #fff; border: 1px solid var(--border); }
+    .error { color: #b00; }
+    .links { margin-top: 0.3rem; font-size: 1rem; }
+    .controls, .upload-row, .peer-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 0.6rem;
+    }
+    input[type="text"], input[type="number"], textarea, select {
+      padding: 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 0.3rem;
+    }
+    input[type="text"] { flex: 1; min-width: 12rem; }
+    input[type="number"] { width: 4.5rem; }
+    textarea { width: 100%; min-height: 5rem; resize: vertical; }
+    button {
+      padding: 0.5rem 1rem;
+      border-radius: 0.3rem;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    button.primary { background: var(--primary); color: #fff; }
+    button.secondary { background: #fff; border-color: var(--primary); color: var(--primary); }
+    button.tab { border: none; border-radius: 0; }
+    .loading { color: #666; font-style: italic; }
+    table { border-collapse: collapse; margin: 0.5rem 0; font-size: 1rem; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; }
+    th { background: #f0f0f0; }
+    a { color: var(--primary); }
+    .primary-links { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.5rem 0; }
+    .primary-link { background: var(--primary); color: #fff; padding: 0.4rem 0.8rem; border-radius: 0.3rem; text-decoration: none; font-weight: 600; }
+    .secondary-links { margin-top: 0.5rem; line-height: 1.7; }
+    .file-status { font-size: 0.95rem; color: #333; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Paper Sandbox</h1>
+    <p class="small">臨床疑問を壁打ち→投稿先候補→原稿生成、または査読対応を選択してください。</p>
+
+    <div class="tabs">
+      <button class="tab active" data-target="new-tab" type="button">新規作成</button>
+      <button class="tab" data-target="review-tab" type="button">査読対応</button>
+    </div>
+
+    <!-- 新規作成タブ -->
+    <div id="new-tab" class="tab-content active">
+      <div class="card">
+        <h2>ファイルアップロード（オプション）</h2>
+        <p class="small">研究計画/プロトコル（TXT/MD/DOCX）とデータ（CSV/TSV/XLSXなど）は自動判別されます。複数ファイルをまとめて選択できます。</p>
+        <div class="upload-row">
+          <label><input type="file" id="files" multiple></label>
+          <button type="button" id="uploadBtn" class="secondary">アップロード</button>
+          <span id="fileStatus" class="file-status"></span>
+        </div>
+      </div>
+
+      <div id="chat"></div>
+
+      <form id="form" class="controls">
+        <input id="message" type="text" placeholder="臨床疑問や追加入力をここに" required autocomplete="off">
+        <button type="submit">送信</button>
+        <button type="button" id="candidatesBtn" class="secondary">投稿候補を表示</button>
+        <input id="selectedIndex" type="number" min="0" max="9" placeholder="0-9" title="選択したい候補の番号">
+        <button type="button" id="continueBtn" class="primary">投稿準備を進める</button>
+      </form>
+    </div>
+
+    <!-- 査読対応タブ -->
+    <div id="review-tab" class="tab-content">
+      <div class="card">
+        <h2>Peer Review Revision</h2>
+        <p class="small">元セッションID、GitHubリポURL、または原稿docxを指定。査読コメントはファイルまたはテキストで入力。</p>
+        <div class="peer-row">
+          <input id="prSessionId" type="text" placeholder="元セッションID">
+          <input id="prRepoUrl" type="text" placeholder="元GitHubリポURL">
+          <label>原稿docx:<input type="file" id="prManuscript" accept=".docx"></label>
+        </div>
+        <div class="peer-row">
+          <label>査読コメントファイル:<input type="file" id="prCommentsFile" accept=".txt,.md,.docx"></label>
+        </div>
+        <textarea id="prCommentsText" placeholder="査読コメントを入力"></textarea>
+        <div class="peer-row">
+          <select id="prDecision">
+            <option value="major">Major revision</option>
+            <option value="minor">Minor revision</option>
+            <option value="reject">Reject</option>
+          </select>
+        </div>
+        <textarea id="prAuthorResponse" placeholder="著者回答・追加方針（任意）"></textarea>
+        <button type="button" id="peerReviewBtn" class="primary">査読対応を開始</button>
+        <div id="peerReviewOutput" style="margin-top:1rem; font-size:1rem;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const form = document.getElementById('form');
+    const message = document.getElementById('message');
+    const candidatesBtn = document.getElementById('candidatesBtn');
+    const continueBtn = document.getElementById('continueBtn');
+    const selectedIndex = document.getElementById('selectedIndex');
+    const filesInput = document.getElementById('files');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileStatus = document.getElementById('fileStatus');
+    const peerReviewBtn = document.getElementById('peerReviewBtn');
+    const tabs = document.querySelectorAll('.tab');
+    const contents = document.querySelectorAll('.tab-content');
+    let sessionId = null;
+    let loadingEl = null;
+    let pollTimer = null;
+
+    tabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        contents.forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.target).classList.add('active');
+      });
+    });
+
+    function append(text, cls) {
+      const div = document.createElement('div');
+      div.className = 'message ' + cls;
+      div.textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    function appendHTML(html, cls) {
+      const div = document.createElement('div');
+      div.className = 'message ' + cls;
+      div.innerHTML = html;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    function setLoading(text) {
+      if (loadingEl) loadingEl.remove();
+      loadingEl = document.createElement('div');
+      loadingEl.className = 'message assistant loading';
+      loadingEl.textContent = text;
+      chat.appendChild(loadingEl);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function removeLoading() {
+      if (loadingEl) {
+        loadingEl.remove();
+        loadingEl = null;
+      }
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    async function safeFetch(url, options) {
+      const res = await fetch(url, options);
+      const text = await res.text();
+      try {
+        return { ok: res.ok, status: res.status, data: JSON.parse(text) };
+      } catch (e) {
+        throw new Error('Server returned non-JSON: ' + text.slice(0, 200));
+      }
+    }
+
+    function markdownTableToHTML(md) {
+      const rows = md.split('\n').map(r => r.trim()).filter(r => r);
+      if (rows.length < 2) return `<pre>${escapeHtml(md)}</pre>`;
+      const sep = rows[1];
+      const hasSep = sep.split('|').some(c => c.trim().replace(/-/g, '').length === 0);
+      const headerRows = hasSep ? [rows[0]] : rows.slice(0, 1);
+      const bodyRows = hasSep ? rows.slice(2) : rows.slice(1);
+      const parseCells = (r) => r.split('|').slice(1, -1).map(c => escapeHtml(c.trim()));
+      let html = '<table><thead><tr>' + parseCells(headerRows[0]).map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+      bodyRows.forEach(r => {
+        if (!r) return;
+        html += '<tr>' + parseCells(r).map(c => `<td>${c}</td>`).join('') + '</tr>';
+      });
+      html += '</tbody></table>';
+      return html;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    function renderOutputLinks(data) {
+      const primary = [];
+      const secondary = [];
+      if (data.package_url) primary.push(`<a href="${data.package_url}" class="primary-link">package.zip（投稿一式）</a>`);
+      if (data.manuscript_url) primary.push(`<a href="${data.manuscript_url}" class="primary-link">manuscript.docx（本文・図表インライン版）</a>`);
+      if (data.revised_manuscript_url) primary.push(`<a href="${data.revised_manuscript_url}" class="primary-link">revised_manuscript.docx（改訂本文）</a>`);
+
+      if (data.summary_url) secondary.push(`<a href="${data.summary_url}" target="_blank">summary.json</a>`);
+      if (data.response_letter_url) secondary.push(`<a href="${data.response_letter_url}">response_to_reviewers.docx</a>`);
+      if (data.cover_letter_url) secondary.push(`<a href="${data.cover_letter_url}">cover_letter.docx</a>`);
+      if (data.review_report_url) secondary.push(`<a href="${data.review_report_url}">reviewer_review.docx</a>`);
+      if (data.validation_report_url) secondary.push(`<a href="${data.validation_report_url}">validation_report.docx</a>`);
+      if (data.pre_submission_checklist_url) secondary.push(`<a href="${data.pre_submission_checklist_url}">pre_submission_checklist.docx（投稿前チェックリスト）</a>`);
+      if (data.pre_submission_checklist_md_url) secondary.push(`<a href="${data.pre_submission_checklist_md_url}" target="_blank">pre_submission_checklist.md</a>`);
+      if (data.tables_url) secondary.push(`<a href="${data.tables_url}">tables.docx</a>`);
+
+      const figParts = [];
+      if ((data.figure_urls || []).length) {
+        data.figure_urls.forEach((u) => {
+          const ext = u.split('.').pop().toLowerCase();
+          const name = u.split('/').pop();
+          const label = ext === 'png' ? 'PNG' : ext === 'tiff' ? 'TIFF' : ext === 'pptx' ? 'PPTX' : name;
+          figParts.push(`<a href="${u}" target="_blank">${label}</a>`);
+        });
+      }
+      if (figParts.length) secondary.push(' 図：' + figParts.join(' '));
+
+      if (data.repo_url) {
+        secondary.push(`<br>公開リポジトリ: <a href="${data.repo_url}" target="_blank">${data.repo_url}</a>`);
+      } else if (data.repo_error) {
+        secondary.push(`<br>リポジトリ作成失敗: ${escapeHtml(data.repo_error)}`);
+      }
+
+      let html = '';
+      if (primary.length) html += '<div class="primary-links">' + primary.join(' ') + '</div>';
+      if (secondary.length) html += '<div class="secondary-links">' + secondary.join(' | ') + '</div>';
+      return html;
+    }
+
+    async function pollJob(jobId) {
+      try {
+        const { ok, data } = await safeFetch('/status/' + encodeURIComponent(jobId));
+        if (!ok || !data.ok) {
+          removeLoading();
+          append('Paper Sandbox: error - ' + (data.error || 'Unknown error'), 'assistant error');
+          return;
+        }
+        if (data.stage === 'running') {
+          setLoading('Paper Sandbox: 処理実行中...（トピック: ' + (data.topic || '').slice(0, 60) + '）');
+          pollTimer = setTimeout(() => pollJob(jobId), 4000);
+          return;
+        }
+        removeLoading();
+        if (data.stage === 'pipeline' || data.stage === 'peer_review') {
+          append('Paper Sandbox: ' + (data.message || '完了しました。'), 'assistant');
+          appendHTML('成果物：' + renderOutputLinks(data), 'assistant links');
+        } else {
+          append('Paper Sandbox:\n' + data.reply, 'assistant');
+        }
+      } catch (err) {
+        removeLoading();
+        append('Paper Sandbox: error - ' + err.message, 'assistant error');
+      }
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function sendChat() {
+      const t = message.value.trim();
+      if (!t) return;
+      append('You: ' + t, 'user');
+      message.value = '';
+      setLoading('Paper Sandbox: 考え中...');
+      try {
+        const { ok, data } = await safeFetch('/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: t, session_id: sessionId }),
+        });
+        removeLoading();
+        if (!ok || !data.ok) {
+          append('Paper Sandbox: error - ' + (data.error || 'Unknown error'), 'assistant error');
+          return;
+        }
+        if (data.session_id) sessionId = data.session_id;
+        append('Paper Sandbox:\n' + data.reply, 'assistant');
+      } catch (err) {
+        removeLoading();
+        append('Paper Sandbox: error - ' + err.message, 'assistant error');
+      }
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function showCandidates() {
+      if (!sessionId) {
+        append('Paper Sandbox: まず壁打ちでセッションを開始してください。', 'assistant error');
+        return;
+      }
+      setLoading('Paper Sandbox: 投稿先候補を作成中...');
+      try {
+        const { ok, data } = await safeFetch('/journal_candidates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+        removeLoading();
+        if (!ok || !data.ok) {
+          append('Paper Sandbox: error - ' + (data.error || 'Unknown error'), 'assistant error');
+          return;
+        }
+        append('Paper Sandbox: 投稿先候補を表示します。番号を選んで「投稿準備を進める」を押してください。', 'assistant');
+        appendHTML(markdownTableToHTML(data.markdown), 'assistant');
+      } catch (err) {
+        removeLoading();
+        append('Paper Sandbox: error - ' + err.message, 'assistant error');
+      }
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function continuePipeline() {
+      if (!sessionId) {
+        append('Paper Sandbox: まず壁打ちでセッションを開始してください。', 'assistant error');
+        return;
+      }
+      const idx = parseInt(selectedIndex.value, 10);
+      if (isNaN(idx) || idx < 0 || idx > 9) {
+        append('Paper Sandbox: 0-9 の番号を入力してください。', 'assistant error');
+        return;
+      }
+      append('You: 候補 ' + idx + ' で投稿準備を進める', 'user');
+      setLoading('Paper Sandbox: 投稿準備を進めています...');
+      try {
+        const { ok, data } = await safeFetch('/continue_pipeline', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, selected_index: idx }),
+        });
+        if (!ok || !data.ok) {
+          removeLoading();
+          append('Paper Sandbox: error - ' + (data.error || 'Unknown error'), 'assistant error');
+          return;
+        }
+        setLoading('Paper Sandbox: パイプラインを開始しました。完了まで数分かかる場合があります...');
+        pollJob(data.job_id);
+      } catch (err) {
+        removeLoading();
+        append('Paper Sandbox: error - ' + err.message, 'assistant error');
+      }
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function pollPeerReview(jobId) {
+      const out = document.getElementById('peerReviewOutput');
+      out.innerHTML = '<span class="loading">改訂原稿を作成中...</span>';
+      for (let i = 0; i < 120; i++) {
+        await new Promise(r => setTimeout(r, 4000));
+        try {
+          const { ok, data } = await safeFetch('/status/' + encodeURIComponent(jobId));
+          if (!ok || !data.ok) {
+            out.innerHTML = '<span class="error">Error: ' + escapeHtml(data.error || 'Unknown error') + '</span>';
+            return;
+          }
+          if (data.stage === 'running') continue;
+          if (data.stage === 'peer_review' || data.stage === 'pipeline') {
+            out.innerHTML = '完了: ' + renderOutputLinks(data);
+          } else {
+            out.innerHTML = '完了: ' + escapeHtml(data.message || '');
+          }
+          return;
+        } catch (err) {
+          out.innerHTML = '<span class="error">Error: ' + escapeHtml(err.message) + '</span>';
+          return;
+        }
+      }
+      out.innerHTML = '<span class="error">タイムアウトしました。/status で確認してください。</span>';
+    }
+
+    async function submitPeerReview() {
+      const formData = new FormData();
+      const sid = document.getElementById('prSessionId').value.trim();
+      if (sid) formData.append('original_session_id', sid);
+      const repo = document.getElementById('prRepoUrl').value.trim();
+      if (repo) formData.append('repo_url', repo);
+      const manuscript = document.getElementById('prManuscript').files[0];
+      if (manuscript) formData.append('manuscript', manuscript);
+      const commentsFile = document.getElementById('prCommentsFile').files[0];
+      if (commentsFile) formData.append('reviewer_comments', commentsFile);
+      const commentsText = document.getElementById('prCommentsText').value.trim();
+      if (commentsText) formData.append('reviewer_comments_text', commentsText);
+      formData.append('decision', document.getElementById('prDecision').value);
+      const authorResponse = document.getElementById('prAuthorResponse').value.trim();
+      if (authorResponse) formData.append('author_response', authorResponse);
+
+      const out = document.getElementById('peerReviewOutput');
+      if (!sid && !repo && !manuscript) {
+        out.innerHTML = '<span class="error">元セッションID、リポURL、または原稿docxのいずれかを指定してください。</span>';
+        return;
+      }
+      if (!commentsText && !commentsFile) {
+        out.innerHTML = '<span class="error">査読コメントをファイルまたはテキストで入力してください。</span>';
+        return;
+      }
+      const btn = document.getElementById('peerReviewBtn');
+      btn.textContent = '改訂中...';
+      btn.disabled = true;
+      try {
+        const { ok, data } = await safeFetch('/peer_review', { method: 'POST', body: formData });
+        if (!ok || !data.ok) {
+          out.innerHTML = '<span class="error">Paper Sandbox error: ' + escapeHtml(data.error || 'Unknown error') + '</span>';
+          return;
+        }
+        if (data.session_id) sessionId = data.session_id;
+        pollPeerReview(data.job_id);
+      } catch (err) {
+        out.innerHTML = '<span class="error">Paper Sandbox error: ' + escapeHtml(err.message) + '</span>';
+      } finally {
+        btn.textContent = '査読対応を開始';
+        btn.disabled = false;
+      }
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      sendChat();
+    });
+
+    candidatesBtn.addEventListener('click', showCandidates);
+    continueBtn.addEventListener('click', continuePipeline);
+    peerReviewBtn.addEventListener('click', submitPeerReview);
+
+    uploadBtn.addEventListener('click', async () => {
+      const formData = new FormData();
+      if (sessionId) formData.append('session_id', sessionId);
+      const files = filesInput.files;
+      if (!files.length) {
+        append('Paper Sandbox: ファイルを選択してください。', 'assistant error');
+        return;
+      }
+      for (const f of files) formData.append('files', f);
+      setLoading('Paper Sandbox: アップロード中...');
+      try {
+        const { ok, data } = await safeFetch('/upload', { method: 'POST', body: formData });
+        removeLoading();
+        if (!ok || !data.ok) {
+          append('Paper Sandbox: error - ' + (data.error || 'Upload failed'), 'assistant error');
+          return;
+        }
+        if (data.session_id) sessionId = data.session_id;
+        const parts = (data.files || []).map(f => `${f.filename} (${f.kind})`);
+        fileStatus.textContent = parts.join(' / ');
+        append('Paper Sandbox: アップロード完了。' + parts.join(' / '), 'assistant');
+      } catch (err) {
+        removeLoading();
+        append('Paper Sandbox: error - ' + err.message, 'assistant error');
+      }
+    });
+  </script>
+</body>
+</html>

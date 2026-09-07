@@ -1,0 +1,16 @@
+{
+  "fabrication": [
+    "Missing citation numbers: [5]",
+    "Figure caption lacks explicit simulated/synthetic label.",
+    "Figure caption lacks explicit simulated/synthetic label.",
+    "Figure caption lacks explicit simulated/synthetic label."
+  ],
+  "reproducibility": [
+    "Methods must state whether data are real, simulated, or from a public source."
+  ],
+  "consistency": [
+    "Discussion refers to 'evidence' not clearly shown in results."
+  ],
+  "formatting": [],
+  "revision": []
+}
