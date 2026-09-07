@@ -94,14 +94,18 @@ def _download(url):
             if _looks_blocked(content, ctype):
                 raise ValueError("server returned a captcha/access-denied page")
             if "html" in ctype and "e-stat.go.jp" in final and "file-download" not in final:
-                # landing/datalist page, not a file: follow the first file-download link it lists
+                # landing/datalist page, not a file: fetch the files it lists and keep the largest
+                # (the first entry is frequently a small index/contents table)
+                best = None
                 for link in _estat_links_in_page(content):
                     try:
                         c2, t2, f2 = _download_one(link)
-                        if "html" not in t2:
-                            return c2, t2, f2
+                        if "html" not in t2 and (best is None or len(c2) > len(best[0])):
+                            best = (c2, t2, f2)
                     except Exception as e2:
                         errors.append(f"{link}: {type(e2).__name__}: {str(e2)[:80]}")
+                if best:
+                    return best
                 raise ValueError("e-Stat page listed no downloadable file")
             return content, ctype, final
         except Exception as e:
@@ -216,7 +220,7 @@ def _usable(df):
     return False
 
 
-def acquire_datasets(candidates, data_dir, max_success=3):
+def acquire_datasets(candidates, data_dir, max_success=6):
     """Try to download each candidate. Returns (acquired, log_entries)."""
     data_dir = Path(data_dir)
     raw_dir = data_dir / "raw"
