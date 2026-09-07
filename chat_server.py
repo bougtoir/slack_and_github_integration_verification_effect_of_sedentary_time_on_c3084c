@@ -606,17 +606,18 @@ async def journal_candidates(req: CandidateRequest):
     session = sessions.get(req.session_id)
     if not session:
         return JSONResponse({"ok": False, "error": "Session not found"}, status_code=404)
-    topic, _ = _resolve_topic_and_background(session)
+    topic, background = _resolve_topic_and_background(session)
     if not topic:
         return JSONResponse({"ok": False, "error": "No topic found in session"}, status_code=400)
 
-    ranked, table_md = await asyncio.to_thread(journal_select.select_journals, cfg, topic, False)
+    ranked, table_md = await asyncio.to_thread(journal_select.select_journals, cfg, topic, False, background)
     session.output_dir.mkdir(parents=True, exist_ok=True)
     (session.output_dir / "journal_candidates.md").write_text(table_md, encoding="utf-8")
     session.candidates = ranked[:10]
 
     candidates = [
-        {"index": i, "name": j["name"], "if_2023": j["if_2023"], "apc_usd": j["apc_usd"], "hybrid": j["hybrid"], "publisher": j["publisher"]}
+        {"index": i, "name": j["name"], "if_2023": j.get("if_2023"), "apc_usd": j.get("apc_usd"), "hybrid": j.get("hybrid"),
+         "publisher": j.get("publisher"), "issn": j.get("issn"), "why": j.get("why", ""), "verified": j.get("verified", False)}
         for i, j in enumerate(ranked[:10])
     ]
     return JSONResponse({

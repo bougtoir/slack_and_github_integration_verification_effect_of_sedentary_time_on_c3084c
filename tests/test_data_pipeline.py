@@ -107,12 +107,109 @@ def test_acquire_records_every_attempt_with_checksum():
 
 def test_discovery_reports_failure_honestly():
     cfg = mock.Mock(perplexity_api_key="", deepseek_api_key="")
-    with mock.patch.object(data_discovery, "_perplexity_discover", return_value=([], "Perplexity: 429")), \
+    with mock.patch.object(data_discovery, "derive_data_requirements", return_value=(None, "DeepSeek unavailable for data-requirements derivation")), \
+         mock.patch.object(data_discovery, "_perplexity_discover", return_value=([], "Perplexity: 429")), \
+         mock.patch.object(data_discovery, "europepmc_open_data_search", side_effect=RuntimeError("offline")), \
          mock.patch.object(data_discovery, "_llm_memory_discover", return_value=([], "DeepSeek unavailable")):
         cands, log = data_discovery.discover_datasets(cfg, "hip fracture Japan")
     assert cands == []
     assert log["n_candidates"] == 0
     assert any("429" in str(e) for e in log.get("errors", []))
+    assert any("Europe PMC" in str(e) for e in log.get("errors", []))
+
+
+def test_discovery_is_requirements_driven_and_tiered():
+    cfg = mock.Mock(perplexity_api_key="k", deepseek_api_key="k", deepseek_base_url="u", deepseek_model="m")
+    req = {
+        "outcome_variables": ["hip fracture count"], "denominator_variables": ["population by age"],
+        "exposure_variables": [], "stratifiers": ["sex"], "period": "2007-2022", "geography": "Japan",
+        "suggested_sources": [{"name": "患者調查", "publisher": "MHLW", "tier": "official",
+                               "why": "S72", "search_keywords": ["患者調查 大腿骨骨折"]}],
+    }
+    estat = [{"name": "患者調查 S72", "publisher": "e-Stat", "download_url": "https://www.e-stat.go.jp/stat-search/files?stat_infid=1",
+              "tier": "official", "discovered_by": "estat_keyword_search"}]
+    pmc = [{"name": "paper", "publisher": "Europe PMC", "download_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC1/fullTextXML",
+            "tier": "published_data", "discovered_by": "europepmc_search"}]
+    pop = [{"name": "population", "publisher": "e-Stat", "download_url": "https://www.e-stat.go.jp/stat-search/files?stat_infid=2",
+            "tier": "official", "discovered_by": "perplexity_web_search"}]
+    coverage = json.dumps({"coverage": [
+        {"index": 0, "covers": ["hip fracture count", "sex"], "relevance": 0.9},
+        {"index": 1, "covers": ["population by age"], "relevance": 0.8},
+        {"index": 2, "covers": [], "relevance": 0.3},
+    ]})
+    fake_client = mock.Mock()
+    fake_client.chat.return_value = coverage
+    with mock.patch.object(data_discovery, "derive_data_requirements", return_value=(req, None)), \
+         mock.patch.object(data_discovery, "estat_search", return_value=estat) as es, \
+         mock.patch.object(data_discovery, "_perplexity_discover", side_effect=lambda cfg, q, tier=None: (pop if tier == "official" else [], None)), \
+         mock.patch.object(data_discovery, "europepmc_open_data_search", return_value=pmc), \
+         mock.patch.object(data_discovery, "AIClient", return_value=fake_client):
+        cands, log = data_discovery.discover_datasets(cfg, "hip fracture incidence in Japan", protocol="plan")
+    es.assert_called()  # Japanese keyword from the plan was searched on e-Stat
+    assert [c["name"] for c in cands] == ["患者調查 S72", "population", "paper"]  # unmet-coverage first
+    assert cands[0]["covers"] == ["hip fracture count", "sex"]
+    assert log["requirements"]["outcome_variables"] == ["hip fracture count"]
+    assert log["tiers"] == {"official": 2, "published_data": 1, "open_repo": 0}
+    assert "estat_keyword_search" in log["method"] and "europepmc_search" in log["method"]
+
+
+def test_estat_landing_page_resolves_to_file_download():
+    page = b'<html><a href="/stat-search/file-download?statInfId=000040045488&amp;fileKind=4">x</a></html>'
+    csv_bytes = "a,b\n1,2\n3,4\n5,6\n".encode()
+
+    def fake_get(url, **kw):
+        r = mock.MagicMock()
+        r.__enter__.return_value = r
+        r.raise_for_status.return_value = None
+        r.url = url
+        if "file-download" in url:
+            r.headers = {"Content-Type": "text/csv"}
+            r.iter_content.return_value = [csv_bytes]
+        else:
+            r.headers = {"Content-Type": "text/html"}
+            r.iter_content.return_value = [page]
+        return r
+
+    with mock.patch.object(data_acquisition.requests, "get", side_effect=fake_get):
+        content, ctype, final = data_acquisition._download("https://www.e-stat.go.jp/en/stat-search/files?page=1&layout=datalist&lid=1")
+    assert content == csv_bytes and "statInfId=000040045488" in final
+    links = data_acquisition._estat_links_in_page(page)
+    assert links[0].endswith("statInfId=000040045488&fileKind=0")
+
+
+def test_journal_select_uses_manuscript_and_verifies_with_crossref():
+    from paper_sandbox.stages import journal_select as js
+    proposal = json.dumps({"journals": [
+        {"name": "Osteoporosis International", "publisher": "Springer", "scope_fit": 0.9, "why": "protocol on hip fracture trends",
+         "article_type_ok": True, "oa_model": "hybrid", "est_if": 4.0, "est_apc_usd": 3000, "concerns": ""},
+        {"name": "Journal of Made Up Things", "publisher": "X", "scope_fit": 0.95, "why": "fake", "article_type_ok": True,
+         "oa_model": "full OA", "est_if": None, "est_apc_usd": None, "concerns": ""},
+    ]})
+    client = mock.Mock()
+    client.chat.return_value = proposal
+
+    def fake_verify(name, timeout=10):
+        if "Osteoporosis" in name:
+            return {"crossref_title": "Osteoporosis International", "publisher": "Springer", "issn": "0937-941X", "total_dois": 10000}
+        return None
+
+    manuscript = {"title": "Hip fracture trends in Japan: protocol", "abstract": "...", "sections": {"methods": "e-Stat"}, "tables": [], "figures": []}
+    with mock.patch.object(js, "_crossref_verify", side_effect=fake_verify):
+        ranked, table = js.select_journals(mock.Mock(workspace=Path("/nonexistent")), "hip fracture", manuscript=manuscript, client=client)
+    prompt = client.chat.call_args[0][0]
+    assert "Hip fracture trends in Japan: protocol" in prompt and "STUDY PROTOCOL" in prompt
+    assert [j["name"] for j in ranked] == ["Osteoporosis International"]  # unverifiable journal dropped
+    assert ranked[0]["verified"] and ranked[0]["issn"] == "0937-941X" and "protocol" in ranked[0]["why"]
+    assert "Crossref" in table
+
+
+def test_journal_select_falls_back_honestly():
+    from paper_sandbox.stages import journal_select as js
+    client = mock.Mock()
+    client.chat.return_value = "[AI request failed]"
+    ranked, table = js.select_journals(mock.Mock(workspace=Path("/nonexistent")), "hip fracture osteoporosis", client=client)
+    assert ranked and all(j["verified"] is False for j in ranked)
+    assert "FALLBACK" in table
 
 
 def test_parse_datasets_marks_candidates_unverified():

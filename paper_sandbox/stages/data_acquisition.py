@@ -7,6 +7,7 @@ import hashlib
 import csv
 import io
 import json
+import os
 import re
 import zipfile
 from datetime import datetime, timezone
@@ -41,8 +42,28 @@ def machine_readable_urls(url):
     if m and "e-stat.go.jp" in url:
         out.append(f"https://www.e-stat.go.jp/stat-search/file-download?statInfId={m.group(1)}&fileKind=1")
         out.append(f"https://www.e-stat.go.jp/stat-search/file-download?statInfId={m.group(1)}&fileKind=0")
+    m = re.search(r"(?:statdisp_id|statsDataId|dbview\?sid)=(\d+)", url, re.IGNORECASE)
+    app_id = (os.getenv("ESTAT_APP_ID") or "").strip()
+    if m and "e-stat.go.jp" in url and app_id:
+        out.append(
+            "https://api.e-stat.go.jp/rest/3.0/app/getSimpleStatsData"
+            f"?appId={app_id}&lang=J&statsDataId={m.group(1)}&metaGetFlg=N&cntGetFlg=N&sectionHeaderFlg=1"
+        )
     out.append(url)
     return out
+
+
+def _estat_links_in_page(content, base="https://www.e-stat.go.jp", limit=3):
+    """From an e-Stat datalist/search page, return direct file-download links (CSV first, then XLSX)."""
+    text = content.decode("utf-8", errors="replace")
+    ids = list(dict.fromkeys(re.findall(r"statInfId=(\d+)&(?:amp;)?fileKind=\d", text)))
+    if not ids:
+        ids = list(dict.fromkeys(re.findall(r"stat_infid=(\d+)", text)))
+    links = []
+    for sid in ids[:limit]:
+        links.append(f"{base}/stat-search/file-download?statInfId={sid}&fileKind=0")
+        links.append(f"{base}/stat-search/file-download?statInfId={sid}&fileKind=1")
+    return links
 
 
 def _download_one(url):
@@ -72,6 +93,16 @@ def _download(url):
             content, ctype, final = _download_one(candidate)
             if _looks_blocked(content, ctype):
                 raise ValueError("server returned a captcha/access-denied page")
+            if "html" in ctype and "e-stat.go.jp" in final and "file-download" not in final:
+                # landing/datalist page, not a file: follow the first file-download link it lists
+                for link in _estat_links_in_page(content):
+                    try:
+                        c2, t2, f2 = _download_one(link)
+                        if "html" not in t2:
+                            return c2, t2, f2
+                    except Exception as e2:
+                        errors.append(f"{link}: {type(e2).__name__}: {str(e2)[:80]}")
+                raise ValueError("e-Stat page listed no downloadable file")
             return content, ctype, final
         except Exception as e:
             errors.append(f"{candidate}: {type(e).__name__}: {str(e)[:120]}")
@@ -204,6 +235,8 @@ def acquire_datasets(candidates, data_dir, max_success=3):
             "landing_url": c.get("landing_url"),
             "download_url": url,
             "discovered_by": c.get("discovered_by"),
+            "tier": c.get("tier"),
+            "covers": c.get("covers") or [],
             "attempted_at": datetime.now(timezone.utc).isoformat(),
             "status": None,
             "error": None,
@@ -260,17 +293,33 @@ def write_acquisition_log_md(path, discovery_log, attempts, acquired):
     lines.append(f"Candidates found: {discovery_log.get('n_candidates', 0)}")
     for e in discovery_log.get("errors", []):
         lines.append(f"- discovery error: {e}")
+    req = discovery_log.get("requirements") or {}
+    if req:
+        lines.append("")
+        lines.append("## Data requirements derived from the research plan")
+        for k in ("outcome_variables", "denominator_variables", "exposure_variables", "stratifiers"):
+            if req.get(k):
+                lines.append(f"- {k.replace('_', ' ')}: {', '.join(map(str, req[k]))}")
+        for k in ("period", "geography", "unit_of_analysis"):
+            if req.get(k):
+                lines.append(f"- {k.replace('_', ' ')}: {req[k]}")
+        if req.get("suggested_sources"):
+            lines.append("")
+            lines.append("Databases suggested from the plan (priority order):")
+            for s in req["suggested_sources"]:
+                lines.append(f"- [{s.get('tier')}] {s.get('name')} ({s.get('publisher', '')}) - {s.get('why', '')}")
     lines.append("")
     lines.append(f"Datasets successfully acquired and parsed: {len(acquired)}")
     lines.append("")
-    lines.append("| # | Dataset | Publisher | URL | Status | Detail |")
-    lines.append("|---|---------|-----------|-----|--------|--------|")
+    lines.append("| # | Tier | Dataset | Publisher | Covers | URL | Status | Detail |")
+    lines.append("|---|------|---------|-----------|--------|-----|--------|--------|")
     for a in attempts:
         detail = a.get("error") or (
             f"sha256={a.get('sha256', '')[:12]}…, {sum(t['rows'] for t in a.get('tables', []))} rows"
             if a.get("status") == "acquired" else "")
         lines.append(
-            f"| {a['index']} | {a.get('name') or ''} | {a.get('publisher') or ''} | {a['download_url']} | "
+            f"| {a['index']} | {a.get('tier') or ''} | {a.get('name') or ''} | {a.get('publisher') or ''} | "
+            f"{', '.join(a.get('covers') or [])} | {a['download_url']} | "
             f"{a['status']} | {str(detail).replace('|', '/')} |")
     lines.append("")
     if not acquired:

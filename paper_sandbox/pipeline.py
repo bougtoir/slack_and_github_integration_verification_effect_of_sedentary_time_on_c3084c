@@ -18,11 +18,11 @@ class PaperPipeline:
         self.git = GitTracker(cfg, root=str(cfg.workspace))
         self.figures_dir = cfg.output_dir / "figures"
 
-    def _acquire_and_analyze(self, topic, idea_text):
+    def _acquire_and_analyze(self, topic, idea_text, protocol=""):
         """Discover public data, download it, run generated analysis. Never invents data."""
         out = self.cfg.output_dir
         data_dir = out / "data"
-        candidates, disc_log = data_discovery.discover_datasets(self.cfg, topic, idea_text)
+        candidates, disc_log = data_discovery.discover_datasets(self.cfg, topic, idea_text, protocol=protocol)
         (out / "dataset_candidates.json").write_text(
             json.dumps({"log": disc_log, "candidates": candidates}, indent=2, ensure_ascii=False), encoding="utf-8")
         self.slack.send(f"Data discovery: {len(candidates)} candidate sources ({disc_log.get('method')})")
@@ -86,7 +86,10 @@ class PaperPipeline:
         if not data_url:
             if input_data.get("skip_data_acquisition"):
                 return None
-            return self._acquire_and_analyze(topic or input_data.get("topic", ""), idea_text)
+            return self._acquire_and_analyze(
+                topic or input_data.get("topic", ""), idea_text,
+                protocol=input_data.get("protocol") or input_data.get("background") or "",
+            )
         try:
             summary, df = analyze_data(
                 data_url,
@@ -140,7 +143,8 @@ class PaperPipeline:
 
         # Stage 5: journal selection / confirmation
         ranked, table_md = journal_select.select_journals(
-            self.cfg, topic=topic, maximize_open_access=input_data.get("open_access", False)
+            self.cfg, topic=topic, maximize_open_access=input_data.get("open_access", False),
+            background=input_data.get("background") or input_data.get("protocol", ""), manuscript=manuscript,
         )
         (self.cfg.output_dir / "journal_table.md").write_text(table_md, encoding="utf-8")
         self.git.tag_stage("journal-select")
@@ -219,7 +223,8 @@ class PaperPipeline:
     def journal_candidates(self, input_data):
         topic = input_data.get("topic", "Untitled")
         ranked, table_md = journal_select.select_journals(
-            self.cfg, topic=topic, maximize_open_access=input_data.get("open_access", False)
+            self.cfg, topic=topic, maximize_open_access=input_data.get("open_access", False),
+            background=input_data.get("background") or input_data.get("protocol", ""),
         )
         (self.cfg.output_dir / "journal_candidates.md").write_text(table_md, encoding="utf-8")
         return {"candidates": ranked[:10], "markdown": table_md}
@@ -237,7 +242,8 @@ class PaperPipeline:
         self.git.init()
         topic = input_data.get("topic", "Untitled")
         ranked, table_md = journal_select.select_journals(
-            self.cfg, topic=topic, maximize_open_access=input_data.get("open_access", False)
+            self.cfg, topic=topic, maximize_open_access=input_data.get("open_access", False),
+            background=input_data.get("background") or input_data.get("protocol", ""),
         )
         chosen_journal = ranked[0]
         return self._core_stages(input_data, chosen_journal)
