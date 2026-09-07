@@ -3,7 +3,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 
 from paper_sandbox.ai_client import AIClient
-from paper_sandbox.literature_search import MultiSourceSearcher
+from paper_sandbox.literature_search import MultiSourceSearcher, is_citable
 
 _STOP = {"the", "of", "in", "and", "on", "a", "an", "to", "for", "with", "by", "from", "at", "is", "are", "study", "effect", "effects"}
 
@@ -35,17 +35,60 @@ def generate_search_queries(cfg, topic, idea_text="", n=3, client=None):
 
 def _relevance(ref, topic_tokens):
     title = ref.get("title") or ""
-    if not title or title.strip().lower() == "unknown":
+    if not is_citable(ref):
         return -1
     if re.search(r"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]", title):
         return -1
-    overlap = len(_tokens(title) & topic_tokens)
-    return overlap
+    return len(_tokens(title) & topic_tokens)
 
 
-def collect_literature(cfg, query, limit=10, verify_with_crossref=True, idea_text="", queries=None):
+def screen_relevance(cfg, topic, idea_text, candidates, client=None):
+    """Ask the LLM which of the *given* verified records are relevant to the research plan.
+
+    It may only pick from the supplied list (by index) - it cannot add references. Returns the
+    subset in the LLM's ranked order; on any failure returns None so the caller keeps the
+    token-overlap ranking."""
+    if not candidates:
+        return []
+    client = client or AIClient(cfg.deepseek_api_key, cfg.deepseek_base_url, cfg.deepseek_model)
+    lines = []
+    for i, r in enumerate(candidates):
+        extra = f" | {r['abstract'][:300]}" if r.get("abstract") else ""
+        lines.append(f"[{i}] {r.get('year')} {r.get('title')} ({r.get('journal')}){extra}")
+    prompt = (
+        "You are screening bibliographic records for a manuscript. Below is the research plan and a "
+        "numbered list of REAL records found in PubMed/Crossref/OpenAlex.\n"
+        "Return ONLY a JSON array of the indices of records that are genuinely relevant background or "
+        "prior work for this plan (same disease/exposure/outcome or the study's methods), ordered from most "
+        "to least relevant. Exclude case reports, unrelated conditions, editorials, errata, peer-review "
+        "files, and anything you cannot tell is relevant from the record. Do NOT add records that are not "
+        "in the list.\n\n"
+        f"Research topic: {topic}\n\nPlan: {idea_text[:2000]}\n\nRecords:\n" + "\n".join(lines)
+    )
+    text = client.chat(prompt, temperature=0.0)
+    if not text or text.startswith("[AI"):
+        return None
+    m = re.search(r"\[[\d,\s]*\]", text)
+    if not m:
+        return None
+    try:
+        idx = json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return None
+    out, seen = [], set()
+    for i in idx:
+        if isinstance(i, int) and 0 <= i < len(candidates) and i not in seen:
+            seen.add(i)
+            out.append(candidates[i])
+    return out
+
+
+def collect_literature(cfg, query, limit=10, verify_with_crossref=True, idea_text="", queries=None, client=None):
+    """Return only references whose existence is proven (PubMed record or Crossref DOI record)
+    and that pass a relevance screen. If nothing verifiable is found, return [] - never fall
+    back to unverified LLM/Perplexity output."""
     searcher = MultiSourceSearcher(cfg)
-    queries = queries or generate_search_queries(cfg, query, idea_text)
+    queries = queries or generate_search_queries(cfg, query, idea_text, client=client)
     topic_tokens = _tokens(query) | _tokens(" ".join(queries))
 
     def _one(q):
@@ -62,7 +105,7 @@ def collect_literature(cfg, query, limit=10, verify_with_crossref=True, idea_tex
     merged = []
     for batch in batches:
         for r in batch:
-            key = (r.get("doi") or (r.get("title") or "").lower()).strip()
+            key = (r.get("doi") or (r.get("title") or "").lower()).strip().lower()
             if not key or key in seen:
                 continue
             seen.add(key)
@@ -70,20 +113,33 @@ def collect_literature(cfg, query, limit=10, verify_with_crossref=True, idea_tex
 
     scored = [(s, r) for r in merged if (s := _relevance(r, topic_tokens)) >= 1]
     scored.sort(key=lambda x: (x[0], x[1].get("year") or 0), reverse=True)
-    selected = [r for _, r in scored[: limit * 2]]
+    selected = [r for _, r in scored[: limit * 3]]
 
     if verify_with_crossref and selected:
-        with ThreadPoolExecutor(max_workers=min(10, len(selected))) as ex:
-            def _verify(c):
-                try:
-                    item = searcher.crossref.verify(doi=c.get("doi") or None, title=None if c.get("doi") else c.get("title"))
-                    return searcher.crossref.to_reference(item) if item else None
-                except Exception:
-                    return c
-            verified = [v for v in ex.map(_verify, selected) if v]
-        selected = verified or selected
+        def _verify(c):
+            try:
+                item = searcher.crossref.verify(doi=c.get("doi") or None, title=c.get("title"))
+            except Exception:
+                item = None
+            if item:
+                ref = searcher.crossref.to_reference(item)
+                if c.get("pmid"):
+                    ref["pmid"] = c["pmid"]
+                return ref
+            return c if c.get("pmid") else None
 
-    selected = [r for r in selected if (r.get("title") or "").strip().lower() != "unknown"][:limit]
+        with ThreadPoolExecutor(max_workers=min(10, len(selected))) as ex:
+            selected = [v for v in ex.map(_verify, selected) if v]
+    else:
+        selected = [r for r in selected if r.get("pmid") or r.get("verified_by") == "crossref"]
+
+    selected = [r for r in selected if is_citable(r)]
+
+    screened = screen_relevance(cfg, query, idea_text, selected, client=client)
+    if screened is not None:
+        selected = screened
+
+    selected = selected[:limit]
     for i, r in enumerate(selected, 1):
         r["id"] = i
     return selected

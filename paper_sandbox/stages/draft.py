@@ -47,7 +47,7 @@ def _normalize_manuscript(parsed, references, data_summary=None):
         },
         "figures": parsed.get("figures", []),
         "tables": parsed.get("tables", []),
-        "references": parsed.get("references") or references,
+        "references": references,
         "data_summary": data_summary,
     }
     return normalized
@@ -90,20 +90,25 @@ def renumber_citations_vancouver(parsed):
     text_all = " ".join([parsed.get("abstract", "")] + list(sections.values()))
     markers = re.findall(r"\{([^}]+)\}", text_all)
 
+    ref_by_id = {r.get("id", i + 1): r for i, r in enumerate(parsed.get("references", []))}
+
+    # Only ids that point to a real (verified) reference survive; markers to non-existent
+    # references are removed rather than left as dangling numbers.
     seen = []
     seen_set = set()
     for marker in markers:
         for cid in _parse_citation_marker(marker):
-            if cid not in seen_set:
+            if cid in ref_by_id and cid not in seen_set:
                 seen_set.add(cid)
                 seen.append(cid)
 
     mapping = {old: new for new, old in enumerate(seen, 1)}
-    ref_by_id = {r.get("id", i + 1): r for i, r in enumerate(parsed.get("references", []))}
 
     def _renumber_marker(match):
         old_ids = _parse_citation_marker(match.group(1))
         new_ids = sorted({mapping[oid] for oid in old_ids if oid in mapping})
+        if not new_ids:
+            return ""
         return "{" + _collapse_numbers(new_ids) + "}"
 
     if parsed.get("abstract"):
@@ -197,10 +202,15 @@ def _check_for_placeholders(parsed):
 
 def _ref_text(references):
     if not references:
-        return "No references retrieved."
-    return "\n".join(
-        f"[{i}] {r.get('title','Untitled')} ({r.get('year','n.d.')}); DOI:{r.get('doi','')}"
-        for i, r in enumerate(references, 1)
+        return ("No verified references were retrieved. Do NOT cite anything: write without citation markers "
+                "and do not name specific prior studies, authors or their numbers.")
+    return (
+        "Cite ONLY the numbered references below (these are verified to exist). Never cite a number outside "
+        "this list and never attribute findings to studies that are not listed.\n"
+        + "\n".join(
+            f"[{i}] {r.get('title','Untitled')} ({r.get('year','n.d.')}); {r.get('journal','')}; DOI:{r.get('doi','')}"
+            for i, r in enumerate(references, 1)
+        )
     )
 
 
@@ -498,10 +508,10 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
         parsed = strip_unsupported_access_dates(parsed, data_summary)
         _ensure_figures_tables_cited(parsed)
         _check_for_placeholders(parsed)
-        if not parsed.get("references"):
-            parsed["references"] = references
+        # the reference list is always the verified one from the literature stage, never the LLM's
+        parsed["references"] = [dict(r, id=i) for i, r in enumerate(references, 1)]
         parsed = renumber_citations_vancouver(parsed)
-        return _normalize_manuscript(parsed, references, data_summary)
+        return _normalize_manuscript(parsed, parsed["references"], data_summary)
     except (json.JSONDecodeError, ValueError) as e:
         print(f"[draft] Failed to parse AI JSON ({e}); using fallback.")
         out_dir = getattr(cfg, "output_dir", None)
