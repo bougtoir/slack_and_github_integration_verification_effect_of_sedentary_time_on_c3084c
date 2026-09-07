@@ -32,7 +32,7 @@ class PaperPipeline:
             return summary
         except Exception as e:
             self.slack.send(f"Data analysis failed: {e}")
-            return None
+            return {"error": str(e)}
 
     def _prepare_idea(self, input_data):
         topic = input_data.get("topic", "Untitled")
@@ -95,18 +95,18 @@ class PaperPipeline:
 
         # Stage 8: rewrite
         manuscript = rewrite.rewrite_sections(self.cfg, manuscript)
+        draft._check_for_placeholders(manuscript)
         self.git.tag_stage("rewrite")
         self.slack.stage_done("rewrite")
 
         # Stage 9: generate figures and tables
         fg = FigureGenerator(self.figures_dir)
         figure_paths = []
-        if data_summary:
+        if data_summary and "error" not in data_summary:
             fig1_png, fig1_tiff, pptx_path = fg.from_data_summary(data_summary, "figure_1")
             figure_paths.extend([fig1_png, fig1_tiff, pptx_path])
-        else:
-            fig1_png, fig1_tiff, pptx_path = fg.demo_figure(manuscript["figures"][0]["caption"] if manuscript["figures"] else "Proposed workflow")
-            figure_paths.extend([fig1_png, fig1_tiff, pptx_path])
+        elif data_summary and "error" in data_summary:
+            (self.cfg.output_dir / "data_error.txt").write_text(data_summary["error"], encoding="utf-8")
 
         tables_path, table_pptx = fg.table_docx(manuscript.get("tables", []))
         if table_pptx:

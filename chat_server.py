@@ -467,7 +467,8 @@ def _revision_worker(job_id: str, session: ChatSession, original_docx_path: Path
         figure_paths = []
         if revised.get("figures"):
             for fig in revised["figures"]:
-                png, tiff, pptx = fg.demo_figure(fig.get("caption", "Figure"))
+                name = f"figure_{fig.get('id', 1)}"
+                png, tiff, pptx = fg.demo_figure(fig.get("caption", "Figure"), name=name)
                 figure_paths.extend([png, tiff, pptx])
 
         tables_path, table_pptx = fg.table_docx(revised.get("tables", []))

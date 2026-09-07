@@ -2,6 +2,7 @@ import json
 import re
 
 from paper_sandbox.ai_client import AIClient
+from paper_sandbox.stages.checks import contains_placeholder
 
 
 def _repair_json(s):
@@ -43,6 +44,23 @@ def _normalize_manuscript(parsed, references, data_summary=None):
     return normalized
 
 
+def _check_for_placeholders(parsed):
+    """Raise if the parsed manuscript still contains placeholder markers."""
+    for section, text in parsed.get("sections", {}).items():
+        if contains_placeholder(text):
+            raise RuntimeError(f"Placeholder marker found in section '{section}'; refusing to produce manuscript with fabricated values.")
+    for fig in parsed.get("figures", []):
+        if contains_placeholder(fig.get("caption", "")):
+            raise RuntimeError("Placeholder marker found in figure caption; refusing to produce manuscript with fabricated values.")
+    for table in parsed.get("tables", []):
+        if contains_placeholder(table.get("caption", "")):
+            raise RuntimeError("Placeholder marker found in table caption; refusing to produce manuscript with fabricated values.")
+        for row in table.get("rows", []):
+            for cell in row:
+                if contains_placeholder(cell):
+                    raise RuntimeError("Placeholder marker found in table cell; refusing to produce manuscript with fabricated values.")
+
+
 def _ref_text(references):
     if not references:
         return "No references retrieved."
@@ -59,7 +77,7 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
 
     refs = _ref_text(references)
 
-    if data_summary:
+    if data_summary and "error" not in data_summary:
         data_block = json.dumps(data_summary, indent=2, ensure_ascii=False)
         mode_instruction = (
             "A real data summary has been supplied. Use ONLY the numbers in the data summary "
@@ -67,14 +85,23 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
             "intervals, or any other numeric values that are not in the data summary. Cite the "
             "analysis as performed by the sandbox pipeline."
         )
+    elif data_summary and "error" in data_summary:
+        data_block = f"Data file was supplied but analysis failed: {data_summary['error']}"
+        mode_instruction = (
+            "A data file was supplied but could not be analyzed. Do not invent sample sizes, "
+            "p-values, medians, regression coefficients, or any other empirical numbers. "
+            "Do not use placeholders such as [to be calculated] or [TBD]. Clearly state in Methods "
+            "that data access or analysis failed and describe the planned analysis once data are available. "
+            "If a figure or table is included, describe it as a conceptual workflow, not empirical results."
+        )
     else:
         data_block = "No data file was supplied."
         mode_instruction = (
             "No data file was supplied. Produce a detailed research PROTOCOL / pre-analysis plan. "
             "Do not invent sample sizes, p-values, medians, regression coefficients, or any "
-            "other empirical numbers. Use placeholders such as [to be calculated] for values "
-            "that will be derived from data. Clearly state that Results are planned analyses "
-            "and that the current draft is a protocol."
+            "other empirical numbers. Do not use placeholders such as [to be calculated] or [TBD]. "
+            "Clearly state that Results are planned analyses and that the current draft is a protocol. "
+            "If a figure or table is included, describe it as a conceptual workflow, not empirical results."
         )
 
     journal_block = ""
@@ -114,10 +141,11 @@ def generate_draft(cfg, idea, references, data_summary=None, chosen_journal=None
 
     text = client.chat(prompt, temperature=0.6)
     if not text or text.startswith("[AI"):
-        return _normalize_manuscript({"title": "Research protocol", "abstract": "[AI unavailable; protocol placeholder]"}, references, data_summary)
+        return _normalize_manuscript({"title": "Research protocol", "abstract": "AI client unavailable; protocol not generated."}, references, data_summary)
 
     try:
         parsed = _extract_json(text)
+        _check_for_placeholders(parsed)
         return _normalize_manuscript(parsed, references, data_summary)
     except (json.JSONDecodeError, ValueError) as e:
         print(f"[draft] Failed to parse AI JSON ({e}); using fallback.")

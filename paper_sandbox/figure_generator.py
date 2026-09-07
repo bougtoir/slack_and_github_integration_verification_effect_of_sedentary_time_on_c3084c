@@ -61,18 +61,20 @@ class FigureGenerator:
         prs.save(path)
         return str(path)
 
-    def demo_figure(self, caption):
-        """Generate a clearly synthetic demo figure."""
-        np.random.seed(42)
-        x = np.linspace(0, 10, 100)
-        y = np.sin(x) + np.random.normal(0, 0.1, size=x.shape)
+    def demo_figure(self, caption, name="figure_1"):
+        """Generate a clear placeholder figure when no data is supplied."""
         plt.figure(figsize=(6, 4))
-        plt.plot(x, y, label="Simulated signal")
-        plt.xlabel("Time (simulated units)")
-        plt.ylabel("Outcome (simulated units)")
+        plt.text(
+            0.5,
+            0.55,
+            "No data supplied.\nNo empirical figure is generated;\ninsert real data after data is provided.",
+            ha="center",
+            va="center",
+            fontsize=12,
+        )
         plt.title(caption)
-        plt.legend()
-        return self._save_figure("figure_1", caption)
+        plt.axis("off")
+        return self._save_figure(name, caption)
 
     def from_data_summary(self, summary, name="figure_1"):
         """Generate a bar plot from group statistics when available."""
@@ -149,16 +151,14 @@ class FigureGenerator:
                     for c_idx, val in enumerate(row):
                         ppt_table.cell(r_idx, c_idx).text = str(val)
         else:
-            table = doc.add_table(rows=3, cols=3)
-            table.style = "Table Grid"
-            hdr = table.rows[0].cells
-            hdr[0].text = "Group"
-            hdr[1].text = "n"
-            hdr[2].text = "Mean"
-            for i in range(1, 3):
-                table.rows[i].cells[0].text = f"Group {i}"
-                table.rows[i].cells[1].text = "[to be calculated]"
-                table.rows[i].cells[2].text = "[to be calculated]"
+            note = doc.add_paragraph()
+            note.add_run("No tables were supplied because no data file was provided.").italic = True
+
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12.333), Inches(0.6))
+            title_box.text_frame.text = "Tables"
+            body_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(12.333), Inches(5.0))
+            body_box.text_frame.text = "No tables were supplied because no data file was provided."
 
         path = self.output_dir.parent / "tables.docx"
         doc.save(path)
